@@ -4,12 +4,15 @@ import {
 } from 'lucide-react';
 import { Line, Doughnut } from 'react-chartjs-2';
 import styles from '../../../pages/PrincipalDashboard.module.css';
+import Skeleton from '../../ui/Skeleton';
 
 
 export const StudentSentinel = memo(({ students = [] }) => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [showResults, setShowResults] = useState(false);
+    const [toastMsg, setToastMsg] = useState('');
+    const showLocalToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 2500); };
 
     const handleSearch = (e) => {
         const val = e.target.value;
@@ -42,7 +45,7 @@ export const StudentSentinel = memo(({ students = [] }) => {
             {showResults && results.length > 0 && (
                 <div className={styles.searchResultDropdown}>
                     {results.map(student => (
-                        <div key={student.id} className={styles.resultItem} onClick={() => alert(`Opening Profile: ${student.name}`)}>
+                        <div key={student.id} className={styles.resultItem} onClick={() => showLocalToast(`Opening Profile: ${student.name}`)}>
                             <div className={styles.resultAvatar}>{student.name.charAt(0)}</div>
                             <div className={styles.resultInfo}>
                                 <h4>{student.name}</h4>
@@ -53,11 +56,12 @@ export const StudentSentinel = memo(({ students = [] }) => {
                     ))}
                 </div>
             )}
+            {toastMsg && <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 10001, padding: '0.85rem 1.5rem', borderRadius: '12px', background: '#dcfce7', color: '#166534', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontWeight: 600, fontSize: '0.9rem', maxWidth: '400px' }}>{toastMsg}</div>}
         </div>
     );
 });
 
-export const FacultyPerformanceWidget = memo(({ analytics = { avgScore: 0, passRate: 0, evaluated: 0, pending: 0 } }) => (
+export const FacultyPerformanceWidget = memo(({ analytics = { avgScore: 0, passRate: 0, evaluated: 0, pending: 0 }, loading }) => (
     <div className={styles.glassCard} style={{ borderRadius: '24px', border: 'none', background: 'white', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
             <h3 className={styles.chartTitle} style={{ margin: 0, fontSize: '1.1rem' }}>Faculty Pulse</h3>
@@ -66,27 +70,38 @@ export const FacultyPerformanceWidget = memo(({ analytics = { avgScore: 0, passR
             </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#3b82f6' }}>{analytics.avgScore}%</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Avg Score</div>
-            </div>
-            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#10b981' }}>{analytics.passRate}%</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Pass Rate</div>
-            </div>
-            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#f59e0b' }}>{analytics.evaluated}</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Evaluated</div>
-            </div>
-            <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#ef4444' }}>{analytics.pending}</div>
-                <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Pending</div>
-            </div>
+            {loading ? (
+                [1, 2, 3, 4].map(i => (
+                    <div key={i} style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
+                        <Skeleton width="60px" height="24px" style={{ marginBottom: '8px' }} />
+                        <Skeleton width="40px" height="12px" />
+                    </div>
+                ))
+            ) : (
+                <>
+                    <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#3b82f6' }}>{analytics.avgScore}%</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Avg Score</div>
+                    </div>
+                    <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#10b981' }}>{analytics.passRate}%</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Pass Rate</div>
+                    </div>
+                    <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#f59e0b' }}>{analytics.evaluated}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Evaluated</div>
+                    </div>
+                    <div style={{ background: '#f8fafc', padding: '1rem', borderRadius: '16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#ef4444' }}>{analytics.pending}</div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 600 }}>Pending</div>
+                    </div>
+                </>
+            )}
         </div>
     </div>
 ));
 
-export const ScheduleWidget = memo(({ schedule = [] }) => (
+export const ScheduleWidget = memo(({ schedule = [], loading }) => (
     <div className={styles.glassCard} style={{ borderRadius: '24px', border: 'none', background: 'linear-gradient(145deg, #ffffff, #fefce8)', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
             <div style={{ padding: '6px', background: '#fef9c3', borderRadius: '8px', color: '#ca8a04' }}>
@@ -95,7 +110,17 @@ export const ScheduleWidget = memo(({ schedule = [] }) => (
             <h3 className={styles.chartTitle} style={{ margin: 0, fontSize: '1.1rem' }}>Today's Schedule</h3>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {schedule.length > 0 ? schedule.map((item) => (
+            {loading ? (
+                [1, 2, 3].map(i => (
+                    <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'center', background: 'white', padding: '0.75rem 1rem', borderRadius: '12px' }}>
+                        <Skeleton width="40px" height="14px" />
+                        <div style={{ flex: 1 }}>
+                            <Skeleton width="120px" height="14px" style={{ marginBottom: '6px' }} />
+                            <Skeleton width="80px" height="10px" />
+                        </div>
+                    </div>
+                ))
+            ) : schedule.length > 0 ? schedule.map((item) => (
                 <div key={item.id} style={{
                     display: 'flex', gap: '1rem', alignItems: 'center', background: 'white', padding: '0.75rem 1rem', borderRadius: '12px',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.02)', borderLeft: item.type === 'Urgent' ? '4px solid #ef4444' : '4px solid #3b82f6'
@@ -142,7 +167,7 @@ export const ConfidenceScoreWidget = memo(({ branches = [], branchPerformance = 
     </div>
 ));
 
-export const FocusListWidget = memo(({ branches = [], branchPerformance = [], hodSubmissionStatus = [] }) => {
+export const FocusListWidget = memo(({ branches = [], branchPerformance = [], hodSubmissionStatus = [], loading }) => {
     const criticalDepts = branches
         .map((dept, i) => ({
             name: dept,
@@ -157,7 +182,14 @@ export const FocusListWidget = memo(({ branches = [], branchPerformance = [], ho
                 <AlertTriangle size={20} /> Focus Required
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {criticalDepts.length > 0 ? criticalDepts.map((d, i) => (
+                {loading ? (
+                    [1, 2].map(i => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#f8fafc', borderRadius: '8px' }}>
+                            <Skeleton width="60px" height="14px" />
+                            <Skeleton width="80px" height="12px" />
+                        </div>
+                    ))
+                ) : criticalDepts.length > 0 ? criticalDepts.map((d, i) => (
                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: '#fef2f2', borderRadius: '8px' }}>
                         <span style={{ fontWeight: 600, color: '#7f1d1d', fontSize: '0.9rem' }}>{d.name}</span>
                         <div style={{ textAlign: 'right' }}>
@@ -175,7 +207,7 @@ export const FocusListWidget = memo(({ branches = [], branchPerformance = [], ho
     );
 });
 
-export const YearComparisonWidget = memo(({ trends = { labels: [], datasets: [] } }) => {
+export const YearComparisonWidget = memo(({ trends = { labels: [], datasets: [] }, loading }) => {
     const data = {
         labels: trends.labels || [],
         datasets: [
@@ -204,8 +236,8 @@ export const YearComparisonWidget = memo(({ trends = { labels: [], datasets: [] 
                 <h3 className={styles.chartTitle} style={{ margin: 0, fontSize: '1.1rem' }}>Trend Analysis</h3>
                 <span style={{ fontSize: '0.8rem', background: '#f1f5f9', padding: '4px 8px', borderRadius: '12px', color: '#64748b' }}>Last 5 Years</span>
             </div>
-            <div style={{ height: '220px' }}>
-                <Line data={data} options={options} />
+            <div style={{ height: '220px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {loading ? <Skeleton width="100%" height="100%" /> : <Line data={data} options={options} />}
             </div>
         </div>
     );
@@ -233,55 +265,80 @@ export const NotesWidget = memo(() => {
     );
 });
 
-export const ActionCenter = memo(() => (
-    <div className={styles.glassCard} style={{ borderRadius: '24px', background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)', color: 'white' }}>
-        <h3 className={styles.chartTitle} style={{ marginBottom: '1.5rem', color: 'white', fontSize: '1.2rem' }}>Quick Actions</h3>
-        <div className={styles.quickActionsGrid} style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <button className={styles.actionBtn} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }} onClick={() => alert('Approval Request Sent')}>
-                <ShieldCheck size={20} color="white" />
-                <span>Approvals</span>
-            </button>
-            <button className={styles.actionBtn} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }} onClick={() => alert('Report Generated')}>
-                <FileText size={20} color="white" />
-                <span>Reports</span>
-            </button>
-            <button className={styles.actionBtn} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }} onClick={() => alert('Circular Broadcasted')}>
-                <Users size={20} color="white" />
-                <span>Broadcast</span>
-            </button>
-            <button className={styles.actionBtn} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }} onClick={() => alert('Meeting Scheduled')}>
-                <Calendar size={20} color="white" />
-                <span>Meetings</span>
-            </button>
-        </div>
-    </div>
-));
-
-export const PendingApprovalsWidget = memo(({ approvals = [] }) => {
+export const ActionCenter = memo(() => {
+    const [toastMsg, setToastMsg] = useState('');
+    const showLocalToast = (msg) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 2500); };
     return (
-        <div className={styles.glassCard} style={{ borderRadius: '24px', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 className={styles.chartTitle} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-                    <ShieldCheck size={20} color="#8b5cf6" /> Pending Approvals
-                </h3>
-                <span style={{ background: '#8b5cf6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' }}>{approvals.length} New</span>
+        <>
+            <div className={styles.glassCard} style={{ borderRadius: '24px', background: 'linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%)', color: 'white' }}>
+                <h3 className={styles.chartTitle} style={{ marginBottom: '1.5rem', color: 'white', fontSize: '1.2rem' }}>Quick Actions</h3>
+                <div className={styles.quickActionsGrid} style={{ gridTemplateColumns: '1fr 1fr' }}>
+                    <button className={styles.actionBtn} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }} onClick={() => showLocalToast('Approval Request Sent')}>
+                        <ShieldCheck size={20} color="white" />
+                        <span>Approvals</span>
+                    </button>
+                    <button className={styles.actionBtn} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }} onClick={() => showLocalToast('Report Generated')}>
+                        <FileText size={20} color="white" />
+                        <span>Reports</span>
+                    </button>
+                    <button className={styles.actionBtn} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }} onClick={() => showLocalToast('Circular Broadcasted')}>
+                        <Users size={20} color="white" />
+                        <span>Broadcast</span>
+                    </button>
+                    <button className={styles.actionBtn} style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white' }} onClick={() => showLocalToast('Meeting Scheduled')}>
+                        <Calendar size={20} color="white" />
+                        <span>Meetings</span>
+                    </button>
+                </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto' }}>
-                {approvals.length > 0 ? approvals.map(item => (
-                    <div key={item.id} style={{ padding: '0.75rem', background: '#fcfaff', border: '1px solid #f3e8ff', borderRadius: '12px', transition: 'background 0.2s' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                            <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#1e293b' }}>{item.subject}</span>
-                            <span style={{ fontSize: '0.75rem', color: '#8b5cf6', background: '#f3e8ff', padding: '2px 6px', borderRadius: '4px' }}>{item.dept}</span>
+            {toastMsg && <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 10001, padding: '0.85rem 1.5rem', borderRadius: '12px', background: '#dcfce7', color: '#166534', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontWeight: 600, fontSize: '0.9rem', maxWidth: '400px' }}>{toastMsg}</div>}
+        </>
+    );
+});
+
+export const PendingApprovalsWidget = memo(({ approvals = [], loading }) => {
+    const [reviewToast, setReviewToast] = useState('');
+    React.useEffect(() => { if (reviewToast) { const t = setTimeout(() => setReviewToast(''), 2500); return () => clearTimeout(t); } }, [reviewToast]);
+    return (
+        <>
+            <div className={styles.glassCard} style={{ borderRadius: '24px', height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 className={styles.chartTitle} style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+                        <ShieldCheck size={20} color="#8b5cf6" /> Pending Approvals
+                    </h3>
+                    <span style={{ background: '#8b5cf6', color: 'white', padding: '2px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold' }}>{loading ? '...' : approvals.length} New</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', overflowY: 'auto' }}>
+                    {loading ? (
+                        [1, 2, 3].map(i => (
+                            <div key={i} style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                    <Skeleton width="100px" height="14px" />
+                                    <Skeleton width="40px" height="18px" />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <Skeleton width="80px" height="12px" />
+                                    <Skeleton width="60px" height="24px" />
+                                </div>
+                            </div>
+                        ))
+                    ) : approvals.length > 0 ? approvals.map(item => (
+                        <div key={item.id} style={{ padding: '0.75rem', background: '#fcfaff', border: '1px solid #f3e8ff', borderRadius: '12px', transition: 'background 0.2s' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#1e293b' }}>{item.subject}</span>
+                                <span style={{ fontSize: '0.75rem', color: '#8b5cf6', background: '#f3e8ff', padding: '2px 6px', borderRadius: '4px' }}>{item.dept}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{item.faculty}</span>
+                                <button style={{ padding: '4px 12px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer' }} onClick={() => setReviewToast(`Reviewing ${item.subject}`)}>Review</button>
+                            </div>
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>{item.faculty}</span>
-                            <button style={{ padding: '4px 12px', background: '#8b5cf6', color: 'white', border: 'none', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer' }} onClick={() => alert(`Reviewing ${item.subject}`)}>Review</button>
-                        </div>
-                    </div>
-                )) : <div style={{ color: '#94a3b8', textAlign: 'center' }}>No pending approvals</div>}
+                    )) : <div style={{ color: '#94a3b8', textAlign: 'center' }}>No pending approvals</div>}
+                </div>
+                {!loading && <button style={{ marginTop: 'auto', width: '100%', padding: '0.75rem', background: 'transparent', border: 'none', color: '#8b5cf6', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>View All Requests</button>}
             </div>
-            <button style={{ marginTop: 'auto', width: '100%', padding: '0.75rem', background: 'transparent', border: 'none', color: '#8b5cf6', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>View All Requests</button>
-        </div>
+            {reviewToast && <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 10001, padding: '0.85rem 1.5rem', borderRadius: '12px', background: '#dcfce7', color: '#166534', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontWeight: 600, fontSize: '0.9rem', maxWidth: '400px' }}>{reviewToast}</div>}
+        </>
     );
 });
 
@@ -315,57 +372,70 @@ export const CIEStatsWidget = memo(({ conducted = 65, pending = 15, graded = 20 
     );
 });
 
-export const LowPerformersWidget = memo(({ data }) => (
-    <div className={styles.glassCard} style={{ borderRadius: '24px', border: '1px solid #fee2e2', background: '#fff' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 className={styles.chartTitle} style={{ margin: 0, fontSize: '1.1rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <AlertTriangle size={20} /> Action Required: Low Performers
-            </h3>
-            <span style={{ fontSize: '0.8rem', color: '#991b1b', background: '#fee2e2', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
-                {data?.length || 0} Students
-            </span>
-        </div>
+export const LowPerformersWidget = memo(({ data, loading }) => {
+    const [notifyToast, setNotifyToast] = useState('');
+    React.useEffect(() => { if (notifyToast) { const t = setTimeout(() => setNotifyToast(''), 2500); return () => clearTimeout(t); } }, [notifyToast]);
+    return (
+        <>
+            <div className={styles.glassCard} style={{ borderRadius: '24px', border: '1px solid #fee2e2', background: '#fff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <h3 className={styles.chartTitle} style={{ margin: 0, fontSize: '1.1rem', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <AlertTriangle size={20} /> Action Required: Low Performers
+                    </h3>
+                    <span style={{ fontSize: '0.8rem', color: '#991b1b', background: '#fee2e2', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                        {loading ? '...' : (data?.length || 0)} Students
+                    </span>
+                </div>
 
-        {(!data || data.length === 0) ? (
-            <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
-                No low performers found.
-            </div>
-        ) : (
-            <div style={{ overflowX: 'auto' }}>
-                <table className={styles.table} style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Student</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Dept</th>
-                            <th style={{ textAlign: 'left', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Subject</th>
-                            <th style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Marks</th>
-                            <th style={{ textAlign: 'right', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.map((item, index) => (
-                            <tr key={index} style={{ borderBottom: '1px solid #f8fafc' }}>
-                                <td style={{ padding: '0.75rem' }}>
-                                    <div style={{ fontWeight: '600', color: '#1e293b' }}>{item.student?.name}</div>
-                                    <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{item.student?.regNo}</div>
-                                </td>
-                                <td style={{ padding: '0.75rem', color: '#64748b', fontSize: '0.9rem' }}>{item.student?.department}</td>
-                                <td style={{ padding: '0.75rem', color: '#64748b', fontSize: '0.9rem' }}>{item.subject?.code}</td>
-                                <td style={{ padding: '0.75rem', textAlign: 'center' }}>
-                                    <span style={{ background: '#fee2e2', color: '#ef4444', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                                        {item.marks}
-                                    </span>
-                                </td>
-                                <td style={{ padding: '0.75rem', textAlign: 'right' }}>
-                                    <button style={{ border: '1px solid #e2e8f0', background: 'white', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', color: '#475569' }} onClick={() => alert(`Notifying mentor of ${item.student?.name}`)}>
-                                        Notify
-                                    </button>
-                                </td>
-                            </tr>
+                {loading ? (
+                    <div style={{ padding: '1rem' }}>
+                        {[1, 2, 3].map(i => (
+                            <Skeleton key={i} width="100%" height="50px" style={{ marginBottom: '8px', borderRadius: '8px' }} />
                         ))}
-                    </tbody>
-                </table>
+                    </div>
+                ) : (!data || data.length === 0) ? (
+                    <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>
+                        No low performers found.
+                    </div>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table className={styles.table} style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
+                                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Student</th>
+                                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Dept</th>
+                                    <th style={{ textAlign: 'left', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Subject</th>
+                                    <th style={{ textAlign: 'center', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Marks</th>
+                                    <th style={{ textAlign: 'right', padding: '0.75rem', color: '#64748b', fontSize: '0.85rem' }}>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {data.map((item, index) => (
+                                    <tr key={index} style={{ borderBottom: '1px solid #f8fafc' }}>
+                                        <td style={{ padding: '0.75rem' }}>
+                                            <div style={{ fontWeight: '600', color: '#1e293b' }}>{item.student?.name}</div>
+                                            <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{item.student?.regNo}</div>
+                                        </td>
+                                        <td style={{ padding: '0.75rem', color: '#64748b', fontSize: '0.9rem' }}>{item.student?.department}</td>
+                                        <td style={{ padding: '0.75rem', color: '#64748b', fontSize: '0.9rem' }}>{item.subject?.code}</td>
+                                        <td style={{ padding: '0.75rem', textAlign: 'center' }}>
+                                            <span style={{ background: '#fee2e2', color: '#ef4444', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                                                {item.marks}
+                                            </span>
+                                        </td>
+                                        <td style={{ padding: '0.75rem', textAlign: 'right' }}>
+                                            <button style={{ border: '1px solid #e2e8f0', background: 'white', padding: '4px 8px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', color: '#475569' }} onClick={() => setNotifyToast(`Notifying mentor of ${item.student?.name}`)}>
+                                                Notify
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </div>
-        )}
-    </div>
-));
+            {notifyToast && <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 10001, padding: '0.85rem 1.5rem', borderRadius: '12px', background: '#dcfce7', color: '#166534', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontWeight: 600, fontSize: '0.9rem', maxWidth: '400px' }}>{notifyToast}</div>}
+        </>
+    );
+});

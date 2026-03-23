@@ -1,23 +1,27 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import authenticatedFetch from '../utils/authFetch';
 import API_BASE_URL from '../config/api';
 import DashboardLayout from '../components/DashboardLayout';
+import { useDialog } from '../components/GlobalDialogProvider';
 import {
     LayoutDashboard, Users, FileText, CheckCircle, TrendingUp, BarChart2,
     AlertTriangle, Briefcase, Bell, Activity, Clock, Award, ClipboardList, Phone,
-    Edit, Save, LogOut, ShieldAlert, X, BookOpen, Layers, Megaphone, Calendar, MapPin, PenTool, Download, Mail, Trash2, Key, UserPlus, Upload, GitPullRequest, Eye, Send
+    Edit, Save, LogOut, ShieldAlert, X, BookOpen, Layers, Megaphone, Calendar, MapPin, PenTool, Download, Mail, Trash2, Key, UserPlus, Upload, GitPullRequest, Eye, Send, Unlock, LockOpen
 } from 'lucide-react';
 import {
     departments, subjectsByDept, getStudentsByDept, englishMarks, mathsMarks,
     departmentStats, facultySubjects, facultyProfiles
 } from '../utils/mockData';
 import styles from './HODDashboard.module.css';
+import Skeleton from '../components/ui/Skeleton';
+import { StudentProfileModal } from '../components/dashboard/principal/DirectorySection';
 import {
     Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend,
     ArcElement, PointElement, LineElement, Filler
 } from 'chart.js';
 import { Bar, Doughnut, Line, Pie } from 'react-chartjs-2';
-import logo from '../assets/college_logo.png';
+import logo from '../assets/header_logo.png';
 
 ChartJS.register(
     CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend,
@@ -43,12 +47,237 @@ const parseSubjects = (subjects) => {
     return [];
 };
 
+const DebouncedInput = ({ value, onChange, max, style, className }) => {
+    const [localValue, setLocalValue] = useState(value);
+
+    useEffect(() => {
+        setLocalValue(value);
+    }, [value]);
+
+    const handleBlur = () => {
+        if (localValue !== value) {
+            onChange(localValue);
+        }
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            handleBlur();
+            moveFocus(e.target, 1);
+        } else if (e.key === 'ArrowDown') {
+            moveFocus(e.target, 1);
+            e.preventDefault();
+        } else if (e.key === 'ArrowUp') {
+            moveFocus(e.target, -1);
+            e.preventDefault();
+        }
+    };
+
+    const moveFocus = (target, direction) => {
+        const td = target.closest('td');
+        if (!td) return;
+        const tr = td.closest('tr');
+        if (!tr) return;
+        const cellIndex = Array.from(tr.children).indexOf(td);
+        
+        const nextTr = direction === 1 ? tr.nextElementSibling : tr.previousElementSibling;
+        if (nextTr) {
+            const nextTd = nextTr.children[cellIndex];
+            if (nextTd) {
+                const nextInput = nextTd.querySelector('input');
+                if (nextInput && !nextInput.disabled) {
+                    nextInput.focus();
+                    nextInput.select();
+                }
+            }
+        }
+    };
+
+    const handleChange = (e) => {
+        let val = e.target.value;
+        if (val === 'Ab') {
+            setLocalValue(val);
+            return;
+        }
+        
+        if (val === '') {
+            setLocalValue('');
+            return;
+        }
+
+        let num = parseInt(val, 10);
+        if (isNaN(num)) return;
+
+        if (num < 0) num = 0;
+        if (max && num > max) num = max;
+        
+        setLocalValue(num.toString());
+    };
+
+    return (
+        <input
+            type="number"
+            className={className}
+            style={style}
+            value={localValue === null || localValue === undefined ? '' : localValue}
+            max={max}
+            min="0"
+            onChange={handleChange}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+        />
+    );
+};
+
+const HODStudentRow = React.memo(({ student, index, editMark, selectedCieType, styles, handleMarkChange }) => {
+    const valCIE1 = (editMark.cie1 !== undefined && editMark.cie1 !== null) ? editMark.cie1 : '';
+    const valCIE2 = (editMark.cie2 !== undefined && editMark.cie2 !== null) ? editMark.cie2 : '';
+    const valCIE3 = (editMark.cie3 !== undefined && editMark.cie3 !== null) ? editMark.cie3 : '';
+    const valCIE4 = (editMark.cie4 !== undefined && editMark.cie4 !== null) ? editMark.cie4 : '';
+    const valCIE5 = (editMark.cie5 !== undefined && editMark.cie5 !== null) ? editMark.cie5 : '';
+    const att1Val = (editMark.cie1Att !== undefined && editMark.cie1Att !== null) ? editMark.cie1Att : '';
+    const att2Val = (editMark.cie2Att !== undefined && editMark.cie2Att !== null) ? editMark.cie2Att : '';
+    const att3Val = (editMark.cie3Att !== undefined && editMark.cie3Att !== null) ? editMark.cie3Att : '';
+    const att4Val = (editMark.cie4Att !== undefined && editMark.cie4Att !== null) ? editMark.cie4Att : '';
+    const att5Val = (editMark.cie5Att !== undefined && editMark.cie5Att !== null) ? editMark.cie5Att : '';
+    const total = (Number(valCIE1) || 0) + (Number(valCIE2) || 0) + (Number(valCIE3) || 0) + (Number(valCIE4) || 0) + (Number(valCIE5) || 0);
+    const cieVals = [
+        { key: 'CIE-1', val: valCIE1, att: att1Val !== '' ? parseFloat(att1Val) : null },
+        { key: 'CIE-2', val: valCIE2, att: att2Val !== '' ? parseFloat(att2Val) : null },
+        { key: 'CIE-3', val: valCIE3, att: att3Val !== '' ? parseFloat(att3Val) : null },
+        { key: 'CIE-4', val: valCIE4, att: att4Val !== '' ? parseFloat(att4Val) : null },
+        { key: 'CIE-5', val: valCIE5, att: att5Val !== '' ? parseFloat(att5Val) : null }
+    ];
+    const parts = []; let worstColor = '#94a3b8'; let worstBg = 'transparent';
+    cieVals.forEach(c => {
+        const v = c.val !== '' && c.val !== null && c.val !== undefined ? parseFloat(c.val) : null;
+        const att = c.att;
+        if (v == null) return;
+        if (v < 25 && att != null && att < 75) {
+            parts.push(`${c.key}: Low Marks, Low Att`); worstColor = '#dc2626'; worstBg = '#fef2f2';
+        } else if (v < 25) {
+            parts.push(`${c.key}: Low Marks`);
+            if (worstColor !== '#dc2626') { worstColor = '#ea580c'; worstBg = '#fff7ed'; }
+        } else if (att != null && att < 75) {
+            if (!parts.some(p => p.includes('Low Att'))) { parts.push('Low Att'); }
+            if (worstColor !== '#dc2626') { worstColor = '#ea580c'; worstBg = '#fff7ed'; }
+        }
+    });
+
+    return (<tr key={student.id}><td>{index + 1}</td><td style={{ width: '150px', minWidth: '150px', fontWeight: 600 }}>{student.regNo}</td><td style={{ width: '350px', minWidth: '350px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '350px', fontWeight: 500 }} title={student.name}>{student.name}</td>
+        {['cie1', 'all'].includes(selectedCieType) && <td style={['cie1', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><DebouncedInput className={styles.markInput} value={valCIE1} max={50} onChange={(newVal) => handleMarkChange(student.id, 'cie1', newVal)} /></td>}
+        {['cie1', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><DebouncedInput className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att1Val} max={100} onChange={(newVal) => handleMarkChange(student.id, 'cie1Att', newVal)} /></td>}
+        {['cie2', 'all'].includes(selectedCieType) && <td style={['cie2', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><DebouncedInput className={styles.markInput} value={valCIE2} max={50} onChange={(newVal) => handleMarkChange(student.id, 'cie2', newVal)} /></td>}
+        {['cie2', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><DebouncedInput className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att2Val} max={100} onChange={(newVal) => handleMarkChange(student.id, 'cie2Att', newVal)} /></td>}
+        {['cie3', 'all'].includes(selectedCieType) && <td style={['cie3', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><DebouncedInput className={styles.markInput} value={valCIE3} max={50} onChange={(newVal) => handleMarkChange(student.id, 'cie3', newVal)} /></td>}
+        {['cie3', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><DebouncedInput className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att3Val} max={100} onChange={(newVal) => handleMarkChange(student.id, 'cie3Att', newVal)} /></td>}
+        {['cie4', 'all'].includes(selectedCieType) && <td style={['cie4', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><DebouncedInput className={styles.markInput} value={valCIE4} max={50} onChange={(newVal) => handleMarkChange(student.id, 'cie4', newVal)} /></td>}
+        {['cie4', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><DebouncedInput className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att4Val} max={100} onChange={(newVal) => handleMarkChange(student.id, 'cie4Att', newVal)} /></td>}
+        {['cie5', 'all'].includes(selectedCieType) && <td style={['cie5', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><DebouncedInput className={styles.markInput} value={valCIE5} max={50} onChange={(newVal) => handleMarkChange(student.id, 'cie5', newVal)} /></td>}
+        {['cie5', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><DebouncedInput className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att5Val} max={100} onChange={(newVal) => handleMarkChange(student.id, 'cie5Att', newVal)} /></td>}
+
+        <td style={{ fontWeight: 'bold' }}>{Math.min(total, 250)}</td>
+
+        {(() => {
+            const getCieRemark = (v, a, label) => {
+                if (v == null || isNaN(v) || a == null || isNaN(a)) return null;
+                return {
+                    label,
+                    lowMarks: v < 25,
+                    lowAtt: a < 75,
+                    excellent: v >= 40 && a >= 75,
+                    severity: (v < 25 && a < 75) ? 3 : (v < 25 ? 2 : (a < 75 ? 2 : 0)),
+                    text: (v < 25 && a < 75) ? `${label}: Low Marks, Low Att` :
+                        (v < 25 ? `${label}: Low Marks` :
+                            (a < 75 ? `${label}: Low Att` :
+                                (v >= 40 && a >= 75 ? `${label}: Excellent` : `${label}: Good`)))
+                };
+            };
+
+            const allCies = [
+                getCieRemark(valCIE1 !== '' ? parseFloat(valCIE1) : null, att1Val !== '' ? parseFloat(att1Val) : null, 'CIE-1'),
+                getCieRemark(valCIE2 !== '' ? parseFloat(valCIE2) : null, att2Val !== '' ? parseFloat(att2Val) : null, 'CIE-2'),
+                getCieRemark(valCIE3 !== '' ? parseFloat(valCIE3) : null, att3Val !== '' ? parseFloat(att3Val) : null, 'CIE-3'),
+                getCieRemark(valCIE4 !== '' ? parseFloat(valCIE4) : null, att4Val !== '' ? parseFloat(att4Val) : null, 'CIE-4'),
+                getCieRemark(valCIE5 !== '' ? parseFloat(valCIE5) : null, att5Val !== '' ? parseFloat(att5Val) : null, 'CIE-5')
+            ];
+            const filled = allCies.filter(r => r !== null);
+
+            if (selectedCieType === 'all' && filled.length > 0) {
+                const worst = Math.max(...filled.map(r => r.severity));
+                const color = worst >= 3 ? '#dc2626' : worst >= 2 ? '#ea580c' : '#15803d';
+                const bg = worst >= 3 ? '#fef2f2' : worst >= 2 ? '#fff7ed' : '#f0fdf4';
+
+                const lowMarksCies = filled.filter(r => r.lowMarks).map(r => r.label);
+                const lowAttCies = filled.filter(r => r.lowAtt).map(r => r.label);
+
+                let textParts = [];
+                if (lowMarksCies.length > 0) textParts.push(`${lowMarksCies.join(',')} Low Marks`);
+                if (lowAttCies.length > 0) textParts.push(`${lowAttCies.join(',')} Low Att`);
+                if (textParts.length === 0) {
+                    const allExcellent = filled.every(r => r.excellent);
+                    textParts.push(allExcellent ? 'All Excellent' : 'All Good');
+                }
+                const text = textParts.join(' | ');
+                return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
+                    <div style={{ fontSize: '0.65rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{text}</div>
+                </td>;
+            } else if (selectedCieType === 'all') {
+                return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
+            }
+
+            const focused = getCieRemark(
+                selectedCieType === 'cie1' ? (valCIE1 !== '' ? parseFloat(valCIE1) : null) :
+                selectedCieType === 'cie2' ? (valCIE2 !== '' ? parseFloat(valCIE2) : null) :
+                selectedCieType === 'cie3' ? (valCIE3 !== '' ? parseFloat(valCIE3) : null) :
+                selectedCieType === 'cie4' ? (valCIE4 !== '' ? parseFloat(valCIE4) : null) :
+                (valCIE5 !== '' ? parseFloat(valCIE5) : null),
+                
+                selectedCieType === 'cie1' ? (att1Val !== '' ? parseFloat(att1Val) : null) :
+                selectedCieType === 'cie2' ? (att2Val !== '' ? parseFloat(att2Val) : null) :
+                selectedCieType === 'cie3' ? (att3Val !== '' ? parseFloat(att3Val) : null) :
+                selectedCieType === 'cie4' ? (att4Val !== '' ? parseFloat(att4Val) : null) :
+                (att5Val !== '' ? parseFloat(att5Val) : null),
+                
+                selectedCieType.replace('cie', 'CIE-')
+            );
+            if (!focused) return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
+            const color = focused.severity >= 3 ? '#dc2626' : focused.severity >= 2 ? '#ea580c' : focused.severity === 0 ? '#15803d' : '#2563eb';
+            const bg = focused.severity >= 3 ? '#fef2f2' : focused.severity >= 2 ? '#fff7ed' : '#f0fdf4';
+            return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
+                <div style={{ fontSize: '0.72rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{focused.text}</div>
+            </td>;
+        })()}
+    </tr>);
+}, (prev, next) => {
+    return prev.student.id === next.student.id &&
+        prev.index === next.index &&
+        prev.editMark === next.editMark &&
+        prev.selectedCieType === next.selectedCieType &&
+        prev.styles === next.styles &&
+        prev.handleMarkChange === next.handleMarkChange;
+});
+
 const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     const { user } = useAuth();
-    const [activeTab, setActiveTab] = useState('overview');
+    const { showConfirm, showPrompt } = useDialog();
+    const [activeTab, setActiveTab] = useState(() => {
+        return sessionStorage.getItem('hodActiveTab') || 'overview';
+    });
+
+    useEffect(() => {
+        sessionStorage.setItem('hodActiveTab', activeTab);
+    }, [activeTab]);
+
+    // Toast state & helper
+    const [hodToast, setHodToast] = useState({ show: false, message: '', type: 'success' });
+    const showToast = (message, type = 'success') => {
+        setHodToast({ show: true, message, type });
+        setTimeout(() => setHodToast({ show: false, message: '', type: 'success' }), 3500);
+    };
     const [selectedDept, setSelectedDept] = useState(user?.department || 'CSE');
     const [deptStudents, setDeptStudents] = useState([]);
-    const [selectedSubject, setSelectedSubject] = useState('');
+    const [selectedSubject, setSelectedSubject] = useState(null);
     const [isMyDept, setIsMyDept] = useState(true);
 
     // Filter State for "All Students"
@@ -83,6 +312,8 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     const [performanceSubjectId, setPerformanceSubjectId] = useState('all');
     const [cieTrendData, setCieTrendData] = useState([0, 0, 0, 0, 0]);
     const [allSubjectPerformance, setAllSubjectPerformance] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [isTableLoading, setIsTableLoading] = useState(false);
 
     // HOD Performance Tab State (Faculty-style)
     const [hodPerformanceTab, setHodPerformanceTab] = useState('low');
@@ -146,6 +377,12 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     const [showEditStudentModal, setShowEditStudentModal] = useState(false);
     const [editingStudent, setEditingStudent] = useState(null);
 
+    // Student Bulk Upload State
+    const [showStudentUploadModal, setShowStudentUploadModal] = useState(false);
+    const [studentCsvData, setStudentCsvData] = useState([]);
+    const [studentCsvErrors, setStudentCsvErrors] = useState([]);
+    const [studentCsvFile, setStudentCsvFile] = useState(null);
+
     // Reset Password State
     const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
     const [resetTarget, setResetTarget] = useState(null); // { username, fullName, role }
@@ -187,34 +424,27 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         if (!messageText.trim() || !messagingFaculty) return;
 
         try {
-            const token = user?.token;
-            const headers = {
-                'Content-Type': 'application/json',
-                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-            };
-
-            const response = await fetch(`${API_BASE_URL}/notifications/direct`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/notifications/direct`, {
                 method: 'POST',
-                headers,
                 body: JSON.stringify({
                     userId: messagingFaculty.id,
                     message: messageText,
-                    type: 'INFO', // Changed from MESSAGE to INFO to match backend ENUM
+                    type: 'INFO',
                     category: 'HOD'
                 })
             });
 
             if (response.ok) {
-                alert(`Message sent to ${messagingFaculty.fullName || messagingFaculty.username}`);
+                showToast(`Message sent to ${messagingFaculty.fullName || messagingFaculty.username}`);
                 setMessagingFaculty(null);
                 setMessageText('');
             } else {
                 const err = await response.text();
-                alert('Failed to send message: ' + err);
+                showToast('Failed to send message: ' + err, 'error');
             }
         } catch (error) {
             console.error('Error sending message:', error);
-            alert('Error sending message');
+            showToast('Error sending message', 'error');
         }
     };
 
@@ -223,17 +453,11 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
     const handleSendNewMessage = async () => {
         if (!newMessageText.trim()) {
-            alert('Please enter a message.');
+            showToast('Please enter a message.', 'error');
             return;
         }
 
         try {
-            const token = user?.token;
-            const headers = {
-                'Content-Type': 'application/json',
-                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-            };
-
             const sendBroadcast = async (role) => {
                 const payload = {
                     targetRole: role, // Backend expects 'targetRole' not 'recipientType'
@@ -242,9 +466,8 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                     department: selectedDept
                 };
 
-                return fetch(`${API_BASE_URL}/notifications/broadcast`, {
+                return authenticatedFetch(`${API_BASE_URL}/notifications/broadcast`, {
                     method: 'POST',
-                    headers,
                     body: JSON.stringify(payload)
                 });
             };
@@ -266,7 +489,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
             if (allOk) {
                 const groupName = messageRecipientType === 'BOTH' ? 'Students and Faculty' : `${messageRecipientType.toLowerCase()}s`;
-                alert(`Message sent to all ${groupName}!`);
+                showToast(`Message sent to all ${groupName}!`);
 
                 const sentNotif = {
                     id: `local-${Date.now()}`,
@@ -281,18 +504,17 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                 setNewMessageText('');
             } else {
                 console.error('Some messages failed');
-                // Log details of failed requests
                 responses.forEach(async (r, idx) => {
                     if (!r.ok) {
                         const err = await r.text();
                         console.error(`Request ${idx + 1} failed: ${r.status} ${r.statusText}`, err);
                     }
                 });
-                alert('Error sending message to some groups. Please check console for details.');
+                showToast('Error sending message to some groups. Check console for details.', 'error');
             }
         } catch (error) {
             console.error('Error sending message:', error);
-            alert('Error sending message');
+            showToast('Error sending message', 'error');
         }
     };
 
@@ -308,8 +530,17 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         { label: 'All Students', path: '#all-students', icon: <Users size={20} />, isActive: activeTab === 'all-students', onClick: () => setActiveTab('all-students') },
         { label: 'Student Management', path: '#student-mgmt', icon: <UserPlus size={20} />, isActive: activeTab === 'student-mgmt', onClick: () => setActiveTab('student-mgmt') },
         { label: 'IA Approval Panel', path: '#approvals', icon: <CheckCircle size={20} />, isActive: activeTab === 'approvals', onClick: () => setActiveTab('approvals'), badge: pendingApprovals.length || null },
-        { label: 'Update Marks', path: '#marks', icon: <PenTool size={20} />, isActive: activeTab === 'update-marks', onClick: () => setActiveTab('update-marks') },
-        { label: 'Notifications', path: '#notifications', icon: <Bell size={20} />, isActive: activeTab === 'notifications', onClick: () => setActiveTab('notifications'), badge: unreadCount || null },
+        { label: 'Update Marks', path: '#marks', icon: <PenTool size={20} />, isActive: activeTab === 'update-marks', onClick: () => { setSelectedSubject(null); setSelectedSemester('all'); setActiveTab('update-marks'); } },
+        { label: 'Notifications', path: '#notifications', icon: <Bell size={20} />, isActive: activeTab === 'notifications', onClick: async () => {
+            setActiveTab('notifications');
+            setUnreadCount(0);
+            setNotifications(prev => prev.map(n => ({...n, isRead: true})));
+            try {
+                await authenticatedFetch(`${API_BASE_URL}/notifications/read-all`, { method: 'POST' });
+            } catch (e) {
+                console.error("Failed to mark all as read", e);
+            }
+        }, badge: unreadCount || null },
     ];
 
 
@@ -334,21 +565,18 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         }
 
         try {
-            const token = user?.token;
-            const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
             const method = editingFaculty ? 'PUT' : 'POST';
             const url = editingFaculty
                 ? `${API_BASE_URL}/hod/faculty/${editingFaculty.id}`
                 : `${API_BASE_URL}/hod/faculty`;
 
-            const response = await fetch(url, {
+            const response = await authenticatedFetch(url, {
                 method,
-                headers,
                 body: JSON.stringify(data)
             });
 
             if (response.ok) {
-                alert(editingFaculty ? 'Faculty updated successfully!' : 'Faculty added successfully!');
+                showToast(editingFaculty ? 'Faculty updated successfully!' : 'Faculty added successfully!');
                 setShowAddFacultyModal(false);
                 setEditingFaculty(null);
                 setFacultyForm({ fullName: '', username: '', email: '', password: 'password123', designation: 'Assistant Professor', semester: '', section: '', subjects: '', cieRole: '' });
@@ -356,11 +584,11 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
             } else {
                 const errData = await response.json().catch(() => ({ message: 'Error processing faculty' }));
                 const detailMsg = errData.details ? `\n- ${errData.details.join('\n- ')}` : '';
-                alert(`Failed to process faculty: ${errData.message}${detailMsg}`);
+                showToast(`Failed to process faculty: ${errData.message}${detailMsg}`, 'error');
             }
         } catch (error) {
             console.error(error);
-            alert('Error processing faculty');
+            showToast('Error processing faculty', 'error');
         }
     };
 
@@ -381,36 +609,38 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     };
 
     const handleDeleteFaculty = async (facId) => {
-        if (!window.confirm(`Are you sure you want to remove this faculty from ${selectedDept} department? They will keep their assignments in other departments.`)) return;
+        const confirmed = await showConfirm({
+            title: 'Remove Faculty',
+            message: `Are you sure you want to remove this faculty from ${selectedDept} department? They will keep their assignments in other departments.`,
+            variant: 'warning',
+            confirmText: 'Remove'
+        });
+        if (!confirmed) return;
 
         try {
-            const token = user?.token;
-            const headers = { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-            const response = await fetch(`${API_BASE_URL}/hod/faculty/${facId}?department=${encodeURIComponent(selectedDept)}`, {
-                method: 'DELETE',
-                headers
+            const response = await authenticatedFetch(`${API_BASE_URL}/hod/faculty/${facId}?department=${encodeURIComponent(selectedDept)}`, {
+                method: 'DELETE'
             });
 
             if (response.ok) {
-                alert(`Faculty removed from ${selectedDept} successfully`);
-                fetchFaculty(); // Refresh the list
+                showToast(`Faculty removed from ${selectedDept} successfully`);
+                fetchFaculty();
             } else {
                 const err = await response.json().catch(() => ({ message: 'Error removing faculty' }));
-                const detailMsg = err.details ? `\nDetails: ${err.details}` : '';
-                const tableMsg = err.table ? `\nTable: ${err.table}` : '';
-                alert(`Failed to remove faculty: ${err.message}${detailMsg}${tableMsg}`);
+                const detailMsg = err.details ? ` Details: ${err.details}` : '';
+                const tableMsg = err.table ? ` Table: ${err.table}` : '';
+                showToast(`Failed to remove faculty: ${err.message}${detailMsg}${tableMsg}`, 'error');
             }
         } catch (error) {
             console.error(error);
-            alert('Error removing faculty');
+            showToast('Error removing faculty', 'error');
         }
     };
 
     const fetchFaculty = async () => {
-        if (!isMyDept || !selectedDept || !user?.token) return;
+        if (!isMyDept || !selectedDept) return;
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}` };
-            const response = await fetch(`${API_BASE_URL}/hod/faculty?department=${selectedDept}`, { headers });
+            const response = await authenticatedFetch(`${API_BASE_URL}/hod/faculty?department=${selectedDept}`);
             if (response.ok) {
                 const data = await response.json();
                 setFacultyList(data);
@@ -422,7 +652,8 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
     // Fetch faculty list on mount (needed for overview stat card)
     useEffect(() => {
-        fetchFaculty();
+        setLoading(true);
+        fetchFaculty().finally(() => setLoading(false));
     }, [isMyDept, selectedDept, user]);
 
     // Fetch overview data (real alerts, grade distribution)
@@ -430,8 +661,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         if (isMyDept && selectedDept && user?.token) {
             const fetchOverview = async () => {
                 try {
-                    const headers = { 'Authorization': `Bearer ${user.token}` };
-                    const response = await fetch(`${API_BASE_URL}/hod/overview?department=${selectedDept}`, { headers });
+                    const response = await authenticatedFetch(`${API_BASE_URL}/hod/overview?department=${selectedDept}`);
                     if (response.ok) {
                         const data = await response.json();
                         if (data.alerts) setDepartmentAlerts(data.alerts);
@@ -450,7 +680,8 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                             average: data.deptAverage || 0,
                             passPercentage: data.passPercentage || 0,
                             atRiskCount: data.atRiskCount || 0,
-                            totalStudents: data.totalStudents || 0
+                            totalStudents: data.totalStudents || 0,
+                            completedStudents: data.completedStudents || 0
                         });
                     }
                 } catch (e) {
@@ -466,13 +697,11 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         if ((activeTab === 'monitoring' || activeTab === 'faculty' || activeTab === 'performance') && isMyDept && subjects.length > 0 && deptStudents.length > 0) {
             const fetchSubjectMarks = async () => {
                 try {
-                    const token = user?.token;
-                    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
                     const marksDataBySubject = {};
 
                     for (const subject of subjects) {
                         try {
-                            const response = await fetch(`${API_BASE_URL}/marks/subject/${subject.id}`, { headers });
+                            const response = await authenticatedFetch(`${API_BASE_URL}/marks/subject/${subject.id}`);
                             if (response.ok) {
                                 const marksData = await response.json();
                                 marksDataBySubject[subject.name] = marksData;
@@ -494,10 +723,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     useEffect(() => {
         const fetchNotifications = async () => {
             try {
-                const token = user?.token;
-                if (!token) return;
-                const headers = { 'Authorization': `Bearer ${token}` };
-                const response = await fetch(`${API_BASE_URL}/cie/hod/notifications`, { headers });
+                const response = await authenticatedFetch(`${API_BASE_URL}/cie/hod/notifications`);
                 if (response.ok) {
                     const data = await response.json();
                     setNotifications(data);
@@ -512,31 +738,31 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     }, [user]);
 
     const handleClearNotifications = async () => {
-        if (!window.confirm('Are you sure you want to clear all notifications?')) return;
+        const confirmed = await showConfirm({
+            title: 'Clear Notifications',
+            message: 'Are you sure you want to clear all notifications?',
+            variant: 'warning',
+            confirmText: 'Clear All'
+        });
+        if (!confirmed) return;
         try {
-            const token = user?.token;
-            if (!token) return;
-            const headers = { 'Authorization': `Bearer ${token}` };
-            const response = await fetch(`${API_BASE_URL}/notifications/clear`, { method: 'DELETE', headers });
+            const response = await authenticatedFetch(`${API_BASE_URL}/notifications/clear`, { method: 'DELETE' });
             if (response.ok) {
                 setNotifications([]);
                 setUnreadCount(0);
-                alert('Notifications cleared successfully');
+                showToast('Notifications cleared successfully');
             } else {
-                alert('Failed to clear notifications');
+                showToast('Failed to clear notifications', 'error');
             }
         } catch (e) {
             console.error("Failed to clear notifications", e);
-            alert('Error clearing notifications');
+            showToast('Error clearing notifications', 'error');
         }
     };
 
     const handleDeleteNotification = async (id) => {
         try {
-            const token = user?.token;
-            if (!token) return;
-            const headers = { 'Authorization': `Bearer ${token}` };
-            const response = await fetch(`${API_BASE_URL}/notifications/${id}`, { method: 'DELETE', headers });
+            const response = await authenticatedFetch(`${API_BASE_URL}/notifications/${id}`, { method: 'DELETE' });
             if (response.ok) {
                 setNotifications(prev => prev.filter(n => n.id !== id));
                 // Recalculate unread count if needed
@@ -547,15 +773,16 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         }
     };
 
-    // Fetch pending approvals when tab is active
+    const [unlockRequests, setUnlockRequests] = useState([]);
+    const [unlockRequestsLoading, setUnlockRequestsLoading] = useState(false);
+
+    // Fetch pending approvals and unlock requests globally to display badges
     useEffect(() => {
-        if (activeTab === 'approvals' && isMyDept) {
+        if (isMyDept && selectedDept) {
             const fetchPendingApprovals = async () => {
                 setApprovalLoading(true);
                 try {
-                    const token = user?.token;
-                    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-                    const response = await fetch(`${API_BASE_URL}/marks/pending?department=${selectedDept}`, { headers });
+                    const response = await authenticatedFetch(`${API_BASE_URL}/marks/pending?department=${selectedDept}`);
                     if (response.ok) {
                         const rawMarks = await response.json();
                         // Group raw CieMark records by subject + cieType
@@ -591,19 +818,33 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                     setApprovalLoading(false);
                 }
             };
+            
+            const fetchUnlockRequests = async () => {
+                setUnlockRequestsLoading(true);
+                try {
+                    const response = await authenticatedFetch(`${API_BASE_URL}/marks/unlock-requests/pending?department=${selectedDept}`);
+                    if (response.ok) {
+                        setUnlockRequests(await response.json());
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch unlock requests", e);
+                } finally {
+                    setUnlockRequestsLoading(false);
+                }
+            };
+
             fetchPendingApprovals();
+            fetchUnlockRequests();
         }
-    }, [activeTab, isMyDept, selectedDept]);
+    }, [isMyDept, selectedDept, user?.token]);
 
     // Fetch Subject Trend Data for Performance Tab
     // Unified Performance data fetching
     useEffect(() => {
         const fetchPerformanceData = async () => {
             try {
-                const token = user?.token;
-                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
                 // Combined fetch from the stable overview endpoint
-                const response = await fetch(`${API_BASE_URL}/hod/overview?department=${selectedDept}`, { headers });
+                const response = await authenticatedFetch(`${API_BASE_URL}/hod/overview?department=${selectedDept}`);
 
                 if (response.ok) {
                     const data = await response.json();
@@ -692,9 +933,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
         const fetchStudents = async () => {
             try {
-                const token = user?.token;
-                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-                const response = await fetch(`${API_BASE_URL}/student/all?department=${selectedDept}`, { headers });
+                const response = await authenticatedFetch(`${API_BASE_URL}/student/all?department=${selectedDept}`);
                 if (response.ok) {
                     const data = await response.json();
 
@@ -730,9 +969,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         if (selectedSubject && selectedSubject.id) {
             const fetchMarks = async () => {
                 try {
-                    const token = user?.token;
-                    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-                    const response = await fetch(`${API_BASE_URL}/marks/subject/${selectedSubject.id}`, { headers });
+                    const response = await authenticatedFetch(`${API_BASE_URL}/marks/subject/${selectedSubject.id}`);
 
                     if (response.ok) {
                         const marksData = await response.json();
@@ -764,9 +1001,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         if (isMyDept && selectedDept) {
             const fetchAnnouncements = async () => {
                 try {
-                    const token = user?.token;
-                    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-                    const response = await fetch(`${API_BASE_URL}/cie/hod/announcements`, { headers });
+                    const response = await authenticatedFetch(`${API_BASE_URL}/cie/hod/announcements`);
                     if (response.ok) {
                         const data = await response.json();
                         // Deduplicate by id to prevent duplicate schedule entries
@@ -793,34 +1028,28 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
 
         try {
-            const token = user?.token;
-            const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-            const baseUrl = API_BASE.replace('/marks', '/hod');
-
             let response;
             if (editingScheduleId) {
                 // UPDATE Existing Schedule
-                response = await fetch(`${API_BASE_URL}/cie/announcements/${editingScheduleId}`, {
+                response = await authenticatedFetch(`${API_BASE_URL}/cie/announcements/${editingScheduleId}`, {
                     method: 'PUT',
-                    headers,
                     body: JSON.stringify(data)
                 });
             } else {
                 // CREATE New Schedule
-                response = await fetch(`${API_BASE_URL}/cie/announcements?subjectId=${data.subjectId}`, {
+                response = await authenticatedFetch(`${API_BASE_URL}/cie/announcements?subjectId=${data.subjectId}`, {
                     method: 'POST',
-                    headers,
                     body: JSON.stringify(data)
                 });
             }
 
             if (response.ok) {
-                alert(editingScheduleId ? 'CIE Schedule Updated Successfully!' : 'CIE Schedule Published Successfully!');
+                showToast(editingScheduleId ? 'CIE Schedule Updated Successfully!' : 'CIE Schedule Published Successfully!');
                 setActiveTab('cie-schedule');
-                setEditingScheduleId(null); // Reset edit mode
+                setEditingScheduleId(null);
                 window.location.reload();
-            } else { alert('Failed to publish schedule'); }
-        } catch (error) { console.error(error); alert('Error publishing schedule'); }
+            } else { showToast('Failed to publish schedule', 'error'); }
+        } catch (error) { console.error(error); showToast('Error publishing schedule', 'error'); }
     };
 
     const handleEditSchedule = (schedule) => {
@@ -853,24 +1082,27 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     };
 
     const handleDeleteSchedule = async (id) => {
-        if (!window.confirm('Are you sure you want to delete this schedule? This cannot be undone.')) return;
+        const confirmed = await showConfirm({
+            title: 'Delete Schedule',
+            message: 'Are you sure you want to delete this schedule? This cannot be undone.',
+            variant: 'danger',
+            confirmText: 'Delete'
+        });
+        if (!confirmed) return;
         try {
-            const token = user?.token;
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-            const response = await fetch(`${API_BASE_URL}/cie/announcements/${id}`, {
-                method: 'DELETE',
-                headers
+            const response = await authenticatedFetch(`${API_BASE_URL}/cie/announcements/${id}`, {
+                method: 'DELETE'
             });
 
             if (response.ok) {
-                alert('Schedule deleted successfully');
+                showToast('Schedule deleted successfully');
                 setDepartmentAnnouncements(prev => prev.filter(a => a.id !== id));
             } else {
-                alert('Failed to delete schedule');
+                showToast('Failed to delete schedule', 'error');
             }
         } catch (e) {
             console.error("Failed to delete schedule", e);
-            alert('Error deleting schedule');
+            showToast('Error deleting schedule', 'error');
         }
     };
 
@@ -883,17 +1115,10 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         if (isMyDept) {
             const fetchSubjects = async () => {
                 try {
-                    const token = user?.token;
-                    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-                    // Removed unused localhost URL
-                    const response = await fetch(`${API_BASE_URL}/subjects/department/${selectedDept}`, { headers });
+                    const response = await authenticatedFetch(`${API_BASE_URL}/subjects/department/${selectedDept}`);
                     if (response.ok) {
                         const data = await response.json();
                         setSubjects(data);
-                        // Auto-select first subject for update-marks tab
-                        if (activeTab === 'update-marks' && data.length > 0 && !selectedSubject) {
-                            setSelectedSubject(data[0]);
-                        }
                     }
                 } catch (e) { console.error("Failed to fetch subjects", e); }
             };
@@ -901,25 +1126,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         }
     }, [activeTab, isMyDept, selectedDept]);
 
-    // Handle subject auto-selection when semester or subjects change in update-marks tab
-    useEffect(() => {
-        if (activeTab === 'update-marks' && subjects.length > 0) {
-            const filtered = subjects.filter(sub => {
-                if (sub.name === 'IC') return false;
-                if (selectedSemester !== 'all' && sub.semester != selectedSemester) return false;
-                return true;
-            });
 
-            if (filtered.length > 0) {
-                // If current selectedSubject is not in filtered list, pick the first one
-                if (!selectedSubject || !filtered.find(s => s.id === selectedSubject.id)) {
-                    setSelectedSubject(filtered[0]);
-                }
-            } else {
-                setSelectedSubject(null);
-            }
-        }
-    }, [activeTab, subjects, selectedSemester]);
 
     const commonOptions = { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } }, x: { grid: { display: false } } }, maintainAspectRatio: false };
     const doughnutOptions = { responsive: true, plugins: { legend: { position: 'right' } }, maintainAspectRatio: false };
@@ -964,94 +1171,156 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         });
 
         if (payload.length === 0) {
-            alert("No changes to save.");
+            showToast('No changes to save.', 'info');
             return;
         }
 
         try {
-            const token = user?.token;
-            const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-            const response = await fetch(`${API_BASE_URL}/marks/update/batch`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/marks/update/batch`, {
                 method: 'POST',
-                headers,
                 body: JSON.stringify(payload)
             });
 
             if (response.ok) {
-                alert('Marks updated successfully!');
+                showToast('Marks updated successfully!');
             } else {
                 const err = await response.text();
-                alert('Failed to update marks: ' + err);
+                showToast('Failed to update marks: ' + err, 'error');
             }
         } catch (e) {
             console.error(e);
-            alert('Error updating marks');
+            showToast('Error updating marks', 'error');
         }
     };
 
     const handleApproveMarks = async (subjectId, iaType) => {
-        if (!window.confirm(`Are you sure you want to APPROVE marks for ${iaType}? This will lock these marks.`)) return;
+        const confirmed = await showConfirm({
+            title: 'Approve Marks',
+            message: `Are you sure you want to APPROVE marks for ${iaType}? This will lock these marks.`,
+            variant: 'info',
+            confirmText: 'Approve'
+        });
+        if (!confirmed) return;
         try {
-            const token = user?.token;
-            const headers = { 'Authorization': `Bearer ${token}` };
-            const response = await fetch(`${API_BASE_URL}/marks/approve?subjectId=${subjectId}&iaType=${iaType}`, {
-                method: 'POST',
-                headers
+            const response = await authenticatedFetch(`${API_BASE_URL}/marks/approve?subjectId=${subjectId}&iaType=${iaType}`, {
+                method: 'POST'
             });
             if (response.ok) {
-                alert('Marks approved successfully!');
+                showToast('Marks approved successfully!');
                 setPendingApprovals(prev => prev.filter(p => !(p.subjectId === subjectId && p.iaType === iaType)));
             } else {
                 const err = await response.text();
-                alert('Failed to approve: ' + err);
+                showToast('Failed to approve: ' + err, 'error');
             }
         } catch (e) {
             console.error(e);
-            alert('Error approving marks');
+            showToast('Error approving marks', 'error');
         }
     };
 
     const handleRejectMarks = async (subjectId, iaType) => {
-        if (!window.confirm(`Are you sure you want to REJECT marks for ${iaType}? Faculty will need to resubmit.`)) return;
+        const confirmed = await showConfirm({
+            title: 'Reject Marks',
+            message: `Are you sure you want to REJECT marks for ${iaType}? Faculty will need to resubmit.`,
+            variant: 'danger',
+            confirmText: 'Reject'
+        });
+        if (!confirmed) return;
         try {
-            const token = user?.token;
-            const headers = { 'Authorization': `Bearer ${token}` };
-            const response = await fetch(`${API_BASE_URL}/marks/reject?subjectId=${subjectId}&iaType=${iaType}`, {
-                method: 'POST',
-                headers
+            const response = await authenticatedFetch(`${API_BASE_URL}/marks/reject?subjectId=${subjectId}&iaType=${iaType}`, {
+                method: 'POST'
             });
             if (response.ok) {
-                alert('Marks rejected. Faculty has been notified.');
+                showToast('Marks rejected. Faculty has been notified.');
                 setPendingApprovals(prev => prev.filter(p => !(p.subjectId === subjectId && p.iaType === iaType)));
             } else {
                 const err = await response.text();
-                alert('Failed to reject: ' + err);
+                showToast('Failed to reject: ' + err, 'error');
             }
         } catch (e) {
             console.error(e);
-            alert('Error rejecting marks');
+            showToast('Error rejecting marks', 'error');
+        }
+    };
+
+    const handleApproveUnlockRequest = async (requestId) => {
+        const confirmed = await showConfirm({
+            title: 'Approve Unlock Request',
+            message: 'Are you sure you want to approve this unlock request?',
+            variant: 'info',
+            confirmText: 'Approve'
+        });
+        if (!confirmed) return;
+        setUnlockRequestsLoading(true);
+        try {
+            const response = await authenticatedFetch(`${API_BASE_URL}/marks/unlock-requests/${requestId}/approve`, {
+                method: 'POST'
+            });
+            if (response.ok) {
+                showToast('Unlock request approved! Faculty can now edit those marks.', 'success');
+                setUnlockRequests(prev => prev.filter(r => r.id !== requestId));
+            } else {
+                const err = await response.text();
+                showToast('Failed to approve request: ' + err, 'error');
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('Error approving request', 'error');
+        } finally {
+            setUnlockRequestsLoading(false);
+        }
+    };
+
+    const handleRejectUnlockRequest = async (requestId) => {
+        const confirmed = await showConfirm({
+            title: 'Reject Unlock Request',
+            message: 'Are you sure you want to reject this unlock request?',
+            variant: 'danger',
+            confirmText: 'Reject'
+        });
+        if (!confirmed) return;
+        setUnlockRequestsLoading(true);
+        try {
+            const response = await authenticatedFetch(`${API_BASE_URL}/marks/unlock-requests/${requestId}/reject`, {
+                method: 'POST'
+            });
+            if (response.ok) {
+                showToast('Unlock request rejected.', 'success');
+                setUnlockRequests(prev => prev.filter(r => r.id !== requestId));
+            } else {
+                const err = await response.text();
+                showToast('Failed to reject request: ' + err, 'error');
+            }
+        } catch (e) {
+            console.error(e);
+            showToast('Error rejecting request', 'error');
+        } finally {
+            setUnlockRequestsLoading(false);
         }
     };
 
     const handleUnlockMarks = async (subjectId, iaType, subjectName) => {
-        const reason = prompt(`Why are you unlocking ${subjectName} ${iaType} marks?\n(Optional - press OK to skip)`);
+        const reason = await showPrompt({
+            title: 'Unlock Marks',
+            message: `Why are you unlocking ${subjectName} ${iaType} marks?`,
+            inputLabel: 'Reason (optional)',
+            placeholder: 'Enter reason...',
+            confirmText: 'Continue'
+        });
 
         if (reason === null) return; // User clicked Cancel
 
-        if (!window.confirm(`Are you sure you want to UNLOCK ${subjectName} ${iaType} marks?\n\nThis will change the status from APPROVED to PENDING, allowing faculty to edit them again.`)) {
-            return;
-        }
+        const confirmed = await showConfirm({
+            title: 'Confirm Unlock',
+            message: `Are you sure you want to UNLOCK ${subjectName} ${iaType} marks?\n\nThis will change the status from APPROVED to PENDING, allowing faculty to edit them again.`,
+            variant: 'warning',
+            confirmText: 'Unlock'
+        });
+        if (!confirmed) return;
 
         try {
-            const token = user?.token;
-            const headers = {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            };
-
-            const response = await fetch(`${API_BASE_URL}/marks/unlock`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/marks/unlock`, {
                 method: 'POST',
-                headers,
                 body: JSON.stringify({
                     subjectId,
                     iaType,
@@ -1061,17 +1330,16 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
             if (response.ok) {
                 const result = await response.json();
-                alert(`Success: ${result.message || 'Marks unlocked successfully!'}\n\nFaculty can now edit these marks.`);
-                // Reload page to show updated status
+                showToast(result.message || 'Marks unlocked successfully! Faculty can now edit these marks.');
                 window.location.reload();
             } else {
                 const err = await response.json();
                 console.error('Unlock failed response:', err);
-                alert(`Failed to unlock: ${err.message || 'Unknown error'} (Status: ${response.status})`);
+                showToast(`Failed to unlock: ${err.message || 'Unknown error'} (Status: ${response.status})`, 'error');
             }
         } catch (e) {
             console.error('Unlock error:', e);
-            alert(`Error unlocking marks: ${e.message}. Check console for details.`);
+            showToast(`Error unlocking marks: ${e.message}. Check console for details.`, 'error');
         }
     };
 
@@ -1097,13 +1365,43 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
             setStudentMarksProfile([]);
             setShowProfileModal(true);
 
-            const token = user?.token;
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-            const response = await fetch(`${API_BASE_URL}/marks/student/${student.id}`, { headers });
+            const response = await authenticatedFetch(`${API_BASE_URL}/marks/student/${student.id}`);
 
             if (response.ok) {
                 const data = await response.json();
+                
+                const subjectMarks = {};
+                let totalCie1Acquired = 0;
+                let totalCie1Possible = 0;
+                let cie1Count = 0;
+
+                data.forEach(mark => {
+                    const subjName = mark.subject?.name || mark.subjectName;
+                    if (!subjName) return;
+
+                    if (!subjectMarks[subjName]) {
+                        subjectMarks[subjName] = {};
+                    }
+                    
+                    const cType = (mark.cieType || '').replace('-', '').toUpperCase();
+                    const score = mark.marks != null ? mark.marks : mark.totalScore;
+
+                    if (cType === 'CIE1') { subjectMarks[subjName].cie1 = score; totalCie1Acquired += (score || 0); totalCie1Possible += (mark.maxMarks || 50); cie1Count++; }
+                    if (cType === 'CIE2') subjectMarks[subjName].cie2 = score;
+                    if (cType === 'CIE3') subjectMarks[subjName].cie3 = score;
+                    if (cType === 'CIE4') subjectMarks[subjName].cie4 = score;
+                    if (cType === 'CIE5') subjectMarks[subjName].cie5 = score;
+                });
+
+                const updatedStudent = {
+                    ...student,
+                    subjectMarks,
+                    isCie1Complete: cie1Count > 0,
+                    overallCie1Percentage: totalCie1Possible > 0 ? (totalCie1Acquired / totalCie1Possible) * 100 : null
+                };
+
                 setStudentMarksProfile(data);
+                setSelectedStudentProfile(updatedStudent);
             }
         } catch (e) {
             console.error("Failed to fetch student profile marks", e);
@@ -1116,43 +1414,45 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         const data = { ...studentForm, department: selectedDept };
 
         try {
-            const token = user?.token;
-            const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-            const response = await fetch(`${API_BASE_URL}/hod/students`, {
-                method: 'POST', headers, body: JSON.stringify(data)
+            const response = await authenticatedFetch(`${API_BASE_URL}/hod/students`, {
+                method: 'POST',
+                body: JSON.stringify(data)
             });
 
             if (response.ok) {
-                alert('Student created successfully! They can now login with their Reg No.');
+                showToast('Student created successfully! They can now login with their Reg No.');
                 setShowAddStudentModal(false);
                 setStudentForm({ regNo: '', name: '', email: '', phone: '', parentPhone: '', semester: '1', section: 'A', password: 'password123' });
-                // Refresh student list
                 window.location.reload();
             } else {
                 const err = await response.json().catch(() => ({ message: 'Error creating student' }));
-                alert(`Failed: ${err.message}`);
+                showToast(`Failed: ${err.message}`, 'error');
             }
         } catch (error) {
             console.error(error);
-            alert('Error creating student');
+            showToast('Error creating student', 'error');
         }
     };
 
     const handleDeleteStudent = async (regNo) => {
-        if (!window.confirm(`Are you sure you want to delete student ${regNo}? This will remove their login account and all data.`)) return;
+        const confirmed = await showConfirm({
+            title: 'Delete Student',
+            message: `Are you sure you want to delete student ${regNo}? This will remove their login account and all data.`,
+            variant: 'danger',
+            confirmText: 'Delete'
+        });
+        if (!confirmed) return;
         try {
-            const token = user?.token;
-            const headers = { ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-            const response = await fetch(`${API_BASE_URL}/hod/students/${regNo}`, { method: 'DELETE', headers });
+            const response = await authenticatedFetch(`${API_BASE_URL}/hod/students/${regNo}`, { method: 'DELETE' });
             if (response.ok) {
-                alert('Student deleted successfully');
+                showToast('Student deleted successfully');
                 window.location.reload();
             } else {
-                alert('Failed to delete student');
+                showToast('Failed to delete student', 'error');
             }
         } catch (e) {
             console.error(e);
-            alert('Error deleting student');
+            showToast('Error deleting student', 'error');
         }
     };
 
@@ -1174,27 +1474,24 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     const handleUpdateStudent = async (e) => {
         if (e) e.preventDefault();
         try {
-            const token = user?.token;
-            const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-            const response = await fetch(`${API_BASE_URL}/hod/students/${editingStudent.regNo}`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/hod/students/${editingStudent.regNo}`, {
                 method: 'PUT',
-                headers,
                 body: JSON.stringify(studentForm)
             });
 
             if (response.ok) {
-                alert('Student updated successfully!');
+                showToast('Student updated successfully!');
                 setShowEditStudentModal(false);
                 setEditingStudent(null);
                 setStudentForm({ regNo: '', name: '', email: '', phone: '', parentPhone: '', semester: '1', section: 'A', password: 'password123' });
                 window.location.reload();
             } else {
                 const err = await response.json().catch(() => ({ message: 'Error updating student' }));
-                alert(`Failed: ${err.message}`);
+                showToast(`Failed: ${err.message}`, 'error');
             }
         } catch (error) {
             console.error(error);
-            alert('Error updating student');
+            showToast('Error updating student', 'error');
         }
     };
 
@@ -1206,75 +1503,133 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
     const handleResetPassword = async () => {
         if (!resetTarget || !newPassword || newPassword.length < 4) {
-            alert('Please enter a password with at least 4 characters.');
+            showToast('Please enter a password with at least 4 characters.', 'error');
             return;
         }
         try {
-            const token = user?.token;
-            const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-            const response = await fetch(`${API_BASE_URL}/hod/credentials/reset`, {
-                method: 'PUT', headers,
+            const response = await authenticatedFetch(`${API_BASE_URL}/hod/credentials/reset`, {
+                method: 'PUT',
                 body: JSON.stringify({ username: resetTarget.username, newPassword })
             });
             if (response.ok) {
-                alert(`Password reset successfully for ${resetTarget.fullName || resetTarget.username}`);
+                showToast(`Password reset successfully for ${resetTarget.fullName || resetTarget.username}`);
                 setShowResetPasswordModal(false);
             } else {
                 const err = await response.json().catch(() => ({ message: 'Error resetting password' }));
-                alert(`Failed: ${err.message}`);
+                showToast(`Failed: ${err.message}`, 'error');
             }
         } catch (e) {
             console.error(e);
-            alert('Error resetting password');
+            showToast('Error resetting password', 'error');
         }
     };
 
-    const handleFileUpload = async (e) => {
+    const downloadStudentTemplate = () => {
+        const headers = ['RegNo', 'Name', 'Semester', 'Section', 'Email', 'Phone', 'ParentPhone', 'Password'];
+        const csvContent = headers.join(',') + '\n';
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Student_Upload_Template_${selectedDept}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast('Template downloaded!', 'success');
+    };
+
+    const handleStudentCsvFileChange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
+        setStudentCsvFile(file);
 
-        if (!window.confirm(`Are you sure you want to upload "${file.name}"? This will add students to the ${selectedDept} department.`)) {
-            e.target.value = null; // Reset input
-            return;
-        }
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+            const text = evt.target.result
+                .replace(/\uFEFF/g, '')
+                .replace(/[\u200B-\u200D\u2060]/g, '')
+                .replace(/\r\n/g, '\n')
+                .replace(/\r/g, '\n');
+            const lines = text.split('\n').filter(line => line.trim() !== '');
+            if (lines.length < 1) {
+                setStudentCsvErrors([{ row: 0, message: 'CSV file is empty' }]);
+                setStudentCsvData([]);
+                return;
+            }
+
+            const firstCol = lines[0].split(',')[0].replace(/[^\w]/g, '').trim();
+            const hasHeader = firstCol.length > 0 && !/^\d/.test(firstCol);
+            const dataStartIndex = hasHeader ? 1 : 0;
+
+            const parsed = [];
+            const errors = [];
+
+            for (let i = dataStartIndex; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim());
+                if (values.length < 2) continue;
+
+                const [regNo, name, semester, section, email, phone, parentPhone, password] = values;
+                const rowNum = i + 1;
+                const rowErrors = [];
+
+                if (!regNo) rowErrors.push('Missing RegNo');
+                if (!name) rowErrors.push('Missing Name');
+
+                if (rowErrors.length > 0) {
+                    errors.push({ row: rowNum, message: rowErrors.join(', ') });
+                }
+
+                parsed.push({
+                    regNo,
+                    name,
+                    semester: semester || '1',
+                    section: section || 'A',
+                    email: email || '',
+                    phone: phone || '',
+                    parentPhone: parentPhone || '',
+                    password: password || regNo,
+                    isValid: rowErrors.length === 0
+                });
+            }
+
+            setStudentCsvData(parsed);
+            setStudentCsvErrors(errors);
+        };
+        reader.readAsText(file);
+    };
+
+    const handleStudentBulkUpload = async () => {
+        if (!studentCsvFile) return;
 
         const formData = new FormData();
-        formData.append('file', file);
+        formData.append('file', studentCsvFile);
         formData.append('department', selectedDept);
 
         try {
-            const token = user?.token;
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {}; // No Content-Type for FormData, browser sets it
-
-            // Show loading state if desired (optional)
-            // setClientLoading(true); 
-
-            const response = await fetch(`${API_BASE_URL}/hod/students/upload`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/hod/students/upload`, {
                 method: 'POST',
-                headers,
                 body: formData
             });
 
             const result = await response.json();
 
             if (response.ok) {
-                let msg = result.message;
-                if (result.added !== undefined) msg += `\n\n✅ Added: ${result.added}`;
-                if (result.skipped !== undefined) msg += `\n⚠️ Skipped: ${result.skipped}`;
+                let msg = `Upload Success: ${result.added} added, ${result.skipped} skipped.`;
                 if (result.errors && result.errors.length > 0) {
-                    msg += `\n\n❌ Errors:\n${result.errors.slice(0, 5).join('\n')}`;
-                    if (result.errors.length > 5) msg += `\n...and ${result.errors.length - 5} more errors.`;
+                    msg += ` (${result.errors.length} errors)`;
                 }
-                alert(msg);
+                showToast(msg);
+                setShowStudentUploadModal(false);
+                setStudentCsvData([]);
+                setStudentCsvFile(null);
                 window.location.reload();
             } else {
-                alert(`Upload Failed: ${result.message}`);
+                showToast(`Upload Failed: ${result.message}`, 'error');
             }
         } catch (error) {
             console.error(error);
-            alert('Error uploading file');
-        } finally {
-            e.target.value = null; // Reset input
+            showToast('Error uploading file', 'error');
         }
     };
 
@@ -1301,7 +1656,13 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     };
 
     const handleBulkDelete = async () => {
-        if (!window.confirm(`Are you sure you want to delete ${selectedStudents.length} students? This action cannot be undone.`)) return;
+        const confirmed = await showConfirm({
+            title: 'Delete Students',
+            message: `Are you sure you want to delete ${selectedStudents.length} students? This action cannot be undone.`,
+            variant: 'danger',
+            confirmText: 'Delete All'
+        });
+        if (!confirmed) return;
 
         const headers = {
             'Authorization': `Bearer ${user.token}`,
@@ -1309,24 +1670,22 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         };
 
         try {
-            const response = await fetch(`${API_BASE_URL}/hod/students/bulk`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/hod/students/bulk`, {
                 method: 'DELETE',
-                headers,
                 body: JSON.stringify(selectedStudents)
             });
 
             const result = await response.json();
             if (response.ok) {
-                alert(result.message);
+                showToast(result.message);
                 setSelectedStudents([]);
-                // Reload data
                 window.location.reload();
             } else {
-                alert("Failed to delete students: " + result.message);
+                showToast('Failed to delete students: ' + result.message, 'error');
             }
         } catch (error) {
             console.error(error);
-            alert("Error deleting students");
+            showToast('Error deleting students', 'error');
         }
     };
 
@@ -1391,22 +1750,18 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                         <button className={styles.primaryBtn} onClick={() => setShowAddStudentModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <UserPlus size={16} /> Add New Student
                         </button>
-                        <div>
-                            <input
-                                type="file"
-                                id="csvUpload"
-                                accept=".csv"
-                                style={{ display: 'none' }}
-                                onChange={handleFileUpload}
-                            />
-                            <button
-                                className={styles.secondaryBtn}
-                                onClick={() => document.getElementById('csvUpload').click()}
-                                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#ecfdf5', color: '#059669', border: '1px solid #d1fae5' }}
-                            >
-                                <Upload size={16} /> Bulk Upload CSV
-                            </button>
-                        </div>
+                        <button
+                            className={styles.secondaryBtn}
+                            onClick={() => {
+                                setShowStudentUploadModal(true);
+                                setStudentCsvData([]);
+                                setStudentCsvErrors([]);
+                                setStudentCsvFile(null);
+                            }}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#ecfdf5', color: '#059669', border: '1px solid #d1fae5' }}
+                        >
+                            <Upload size={16} /> Bulk Upload
+                        </button>
                     </div>
                 </div>
 
@@ -1621,6 +1976,124 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         );
     };
 
+    const renderStudentUploadModal = () => {
+        if (!showStudentUploadModal) return null;
+
+        return (
+            <div className={styles.modalOverlay} onClick={() => setShowStudentUploadModal(false)}>
+                <div className={styles.modalContent} style={{ maxWidth: '700px' }} onClick={e => e.stopPropagation()}>
+                    <div className={styles.modalHeader}>
+                        <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Upload size={20} /> Bulk Student Upload
+                        </h3>
+                        <button className={styles.closeBtn} onClick={() => setShowStudentUploadModal(false)}>
+                            <X size={24} />
+                        </button>
+                    </div>
+                    <div className={styles.modalBody}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem', alignItems: 'center' }}>
+                            <span style={{ color: '#64748b', fontSize: '0.9rem' }}>Upload student data for <strong>{selectedDept}</strong></span>
+                            <button className={styles.csvTemplateBtn} onClick={downloadStudentTemplate}>
+                                <Download size={14} /> Download Template
+                            </button>
+                        </div>
+
+                        {!studentCsvFile ? (
+                            <div
+                                className={styles.uploadArea}
+                                onClick={() => document.getElementById('studentCsvInput').click()}
+                            >
+                                <Upload size={48} style={{ color: '#2563eb', marginBottom: '1rem', opacity: 0.5 }} />
+                                <span className={styles.uploadText}>Click to select CSV File</span>
+                                <span className={styles.uploadSubtext}>Maximum file size: 5MB</span>
+                                <input
+                                    type="file"
+                                    id="studentCsvInput"
+                                    accept=".csv"
+                                    onChange={handleStudentCsvFileChange}
+                                    style={{ display: 'none' }}
+                                />
+                            </div>
+                        ) : (
+                            <div className={styles.csvPreviewContainer}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                        <FileText size={16} />
+                                        <span style={{ fontWeight: 600 }}>{studentCsvFile.name}</span>
+                                        <span style={{ fontSize: '0.8rem', color: '#64748b' }}>({studentCsvData.length} records)</span>
+                                    </div>
+                                    <button className={styles.secondaryBtn} onClick={() => setStudentCsvFile(null)} style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}>Change File</button>
+                                </div>
+
+                                {studentCsvErrors.length > 0 && (
+                                    <div style={{ background: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem' }}>
+                                        <div style={{ color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            <AlertTriangle size={14} /> Errors found:
+                                        </div>
+                                        <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.8rem', color: '#991b1b' }}>
+                                            {studentCsvErrors.slice(0, 3).map((err, i) => (
+                                                <li key={i}>{err.message}</li>
+                                            ))}
+                                            {studentCsvErrors.length > 3 && <li>And {studentCsvErrors.length - 3} more...</li>}
+                                        </ul>
+                                    </div>
+                                )}
+
+                                <div className={styles.csvPreviewWrapper}>
+                                    <table className={styles.csvPreviewTable}>
+                                        <thead>
+                                            <tr>
+                                                <th>RegNo</th>
+                                                <th>Name</th>
+                                                <th>Sem</th>
+                                                <th>Sec</th>
+                                                <th>Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {studentCsvData.slice(0, 50).map((row, i) => (
+                                                <tr key={i} className={row.isValid ? styles.csvValidRow : styles.csvErrorRow}>
+                                                    <td>{row.regNo}</td>
+                                                    <td>{row.name}</td>
+                                                    <td>{row.semester}</td>
+                                                    <td>{row.section}</td>
+                                                    <td>
+                                                        {row.isValid ? (
+                                                            <span style={{ color: '#16a34a', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle size={12} /> Ready</span>
+                                                        ) : (
+                                                            <span style={{ color: '#dc2626', display: 'flex', alignItems: 'center', gap: '4px' }}><AlertTriangle size={12} /> Invalid</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                    {studentCsvData.length > 50 && (
+                                        <div style={{ textAlign: 'center', padding: '0.5rem', color: '#64748b', fontSize: '0.8rem' }}>
+                                            + {studentCsvData.length - 50} more rows
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                                    <button className={styles.secondaryBtn} onClick={() => setShowStudentUploadModal(false)}>Cancel</button>
+                                    <button
+                                        className={styles.primaryBtn}
+                                        onClick={handleStudentBulkUpload}
+                                        disabled={studentCsvErrors.length > 0}
+                                        style={{ background: '#2563eb', color: 'white', opacity: studentCsvErrors.length > 0 ? 0.5 : 1 }}
+                                    >
+                                        <Upload size={16} /> Upload Students
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderAllStudents = () => {
         // Calculate available sections based on Students AND Faculty
         const studentSections = deptStudents.flatMap(s => (s.section || 'A').split(',').map(sec => sec.trim().toUpperCase()));
@@ -1684,7 +2157,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                         </select>
                         <button className={styles.primaryBtn} onClick={() => {
                             if (filteredStudents.length === 0) {
-                                alert('No students to export.');
+                                showToast('No students to export.', 'error');
                                 return;
                             }
                             const headers = ['Sl.No', 'Reg No', 'Student Name', 'Semester', 'Section', 'Parent Phone'];
@@ -1727,7 +2200,18 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredStudents.length > 0 ? filteredStudents.map((std, index) => (
+                            {loading ? (
+                                Array.from({ length: 8 }).map((_, i) => (
+                                    <tr key={i}>
+                                        <td style={{ color: '#64748b' }}><Skeleton width="20px" height="14px" /></td>
+                                        <td><Skeleton width="150px" height="14px" /></td>
+                                        <td style={{ fontWeight: 600, color: '#1e293b' }}><Skeleton width="100px" height="14px" /></td>
+                                        <td><Skeleton width="80px" height="14px" /></td>
+                                        <td><Skeleton width="100px" height="14px" /></td>
+                                        <td><Skeleton width="100px" height="32px" /></td>
+                                    </tr>
+                                ))
+                            ) : filteredStudents.length > 0 ? filteredStudents.map((std, index) => (
                                 <tr key={std.id}>
                                     <td style={{ color: '#64748b' }}>{index + 1}</td>
                                     <td>{std.name}</td>
@@ -1765,60 +2249,14 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     const renderStudentProfileModal = () => {
         if (!showProfileModal || !selectedStudentProfile) return null;
 
-        return (
-            <div className={styles.modalOverlay}>
-                <div className={styles.modalContent} style={{ maxWidth: '800px', width: '90%' }}>
-                    <div className={styles.modalHeader}>
-                        <div>
-                            <h3 className={styles.modalTitle}>{selectedStudentProfile.name}</h3>
-                            <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem' }}>
-                                {selectedStudentProfile.regNo} | {selectedStudentProfile.semester} Sem | Section {selectedStudentProfile.section || 'A'}
-                            </p>
-                            <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.9rem' }}>
-                                Parent Contact: <strong>{selectedStudentProfile.parentPhone || 'Not Available'}</strong>
-                            </p>
-                        </div>
-                        <button className={styles.closeBtn} onClick={() => setShowProfileModal(false)}>
-                            <X size={24} />
-                        </button>
-                    </div>
-                    <div className={styles.modalBody}>
-                        <h4 style={{ marginBottom: '1rem', color: '#334155' }}>CIE Marks Overview</h4>
-                        {studentMarksProfile.length > 0 ? (
-                            <table className={styles.table} style={{ border: '1px solid #e2e8f0' }}>
-                                <thead style={{ background: '#f8fafc' }}>
-                                    <tr>
-                                        <th>Subject</th>
-                                        <th>CIE Type</th>
-                                        <th>Marks Obtained</th>
-                                        <th>Max Marks</th>
-
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {studentMarksProfile.map((mark, idx) => (
-                                        <tr key={idx}>
-                                            <td>
-                                                <div style={{ fontWeight: 500 }}>{mark.subjectName}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{mark.subjectCode}</div>
-                                            </td>
-                                            <td><span className={styles.statusBadge} style={{ background: '#e0f2fe', color: '#0369a1' }}>{mark.cieType}</span></td>
-                                            <td style={{ fontWeight: 600 }}>{mark.marks}</td>
-                                            <td style={{ color: '#64748b' }}>{mark.maxMarks}</td>
-
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        ) : (
-                            <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', background: '#f8fafc', borderRadius: '8px' }}>
-                                No marks found for this student.
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        );
+        return <StudentProfileModal 
+            selectedStudentProfile={selectedStudentProfile} 
+            setSelectedStudentProfile={(val) => {
+                setSelectedStudentProfile(val);
+                if (!val) setShowProfileModal(false);
+            }} 
+            selectedDept={{ name: departments.find(d => d.id === selectedDept)?.name || selectedDept }} 
+        />;
     };
 
 
@@ -1933,9 +2371,147 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
             )}
             {activeTab === 'all-students' && renderAllStudents()}
             {activeTab === 'student-mgmt' && renderStudentManagement()}
-            {activeTab === 'overview' && (<div className={styles.overviewContainer}><div className={styles.statsRow}><div className={styles.statCard} onClick={() => setActiveTab('all-students')} style={{ cursor: 'pointer' }}><div className={`${styles.iconBox} ${styles.blue}`}><Users size={24} /></div><div className={styles.statInfo}><p>Total Students</p><h3>{deptStudents.length || 0}</h3></div></div><div className={styles.statCard} onClick={() => setActiveTab('faculty')} style={{ cursor: 'pointer' }}><div className={`${styles.iconBox} ${styles.green}`}><Briefcase size={24} /></div><div className={styles.statInfo}><p>Faculty Members</p><h3>{facultyList.length || 0}</h3></div></div><div className={styles.statCard} onClick={() => setActiveTab('performance')} style={{ cursor: 'pointer' }}><div className={`${styles.iconBox} ${styles.purple}`}><FileText size={24} /></div><div className={styles.statInfo}><p>Dept. Average</p><h3>{analytics ? analytics.average : '-'}/50</h3></div></div><div className={styles.statCard} onClick={() => setActiveTab('performance')} style={{ cursor: 'pointer' }}><div className={`${styles.iconBox} ${styles.orange}`}><Activity size={24} /></div><div className={styles.statInfo}><p>Pass Percentage</p><h3>{analytics ? analytics.passPercentage : '-'}%</h3></div></div></div><div className={styles.gridTwoOne}><div className={styles.leftColumn}><div className={styles.card} style={{ marginBottom: '1.5rem' }}><div className={styles.cardHeader}><h3>Department Performance (Avg IA Score)</h3></div><div className={styles.circlesContainer}><div className={styles.circlesContainer}>{analytics ? [{ label: 'Avg Percentage', value: Math.round(((analytics.average || 0) / 50) * 100) }, { label: 'Pass Rate', value: analytics.passPercentage || 0 }, { label: 'Risk Factor', value: (analytics.totalStudents || deptStudents.length) > 0 ? Math.round(((analytics.atRiskCount || 0) / (analytics.totalStudents || deptStudents.length)) * 100) : 0 }].map((metric, index) => { const data = { labels: ['Metric', 'Remaining'], datasets: [{ data: [metric.value, 100 - metric.value], backgroundColor: ['#8b5cf6', '#f3f4f6'], borderWidth: 0, cutout: '70%' }] }; return (<div key={index} className={styles.circleItem}><div style={{ height: '120px', width: '120px', position: 'relative' }}><Doughnut data={data} options={{ ...doughnutOptions, plugins: { legend: { display: false }, tooltip: { enabled: false } } }} /><div className={styles.circleLabel}><span className={styles.circleValue}>{metric.value}%</span></div></div><p className={styles.circleName}>{metric.label}</p></div>); }) : <p style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>Loading Analytics...</p>}</div></div></div></div><div className={styles.rightColumn}><div className={styles.card}><div className={styles.cardHeader}><h3>Recent Alerts</h3>{departmentAlerts.length > 3 && (<button className={styles.secondaryBtn} style={{ fontSize: '0.8rem', padding: '4px 8px' }} onClick={() => setShowAllAlerts(!showAllAlerts)}>{showAllAlerts ? 'Show Less' : 'View All'}</button>)}</div><div className={styles.alertList}>{(showAllAlerts ? departmentAlerts : departmentAlerts.slice(0, 3)).map(alert => (<div key={alert.id} className={`${styles.alertItem} ${styles[alert.type]}`}><AlertTriangle size={16} /><div><p>{alert.message}</p><span>{alert.date}</span></div></div>))}</div></div></div></div></div>)}
-            {activeTab === 'update-marks' && (<div className={styles.updateMarksContainer}><div className={styles.card}><div className={styles.cardHeader}><h3>Modify Student Marks</h3><div className={styles.filterGroup}>
-                <select className={styles.deptSelect} value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} style={{ marginRight: '10px' }}>
+            {activeTab === 'overview' && (
+                <div className={styles.overviewContainer}>
+                    <div className={styles.statsRow}>
+                        {loading ? (
+                            Array.from({ length: 4 }).map((_, i) => (
+                                <div key={i} className={styles.statCard}>
+                                    <div className={`${styles.iconBox} ${styles.skeleton}`}><Skeleton variant="circle" width="24px" height="24px" /></div>
+                                    <div className={styles.statInfo}>
+                                        <Skeleton width="80px" height="12px" style={{ marginBottom: '4px' }} />
+                                        <Skeleton width="40px" height="24px" />
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <>
+                                <div className={styles.statCard} onClick={() => setActiveTab('all-students')} style={{ cursor: 'pointer' }}>
+                                    <div className={`${styles.iconBox} ${styles.blue}`}><Users size={24} /></div>
+                                    <div className={styles.statInfo}>
+                                        <p>Total Students</p>
+                                        <h3>{deptStudents.length || 0}</h3>
+                                    </div>
+                                </div>
+                                <div className={styles.statCard} onClick={() => setActiveTab('faculty')} style={{ cursor: 'pointer' }}>
+                                    <div className={`${styles.iconBox} ${styles.green}`}><Briefcase size={24} /></div>
+                                    <div className={styles.statInfo}>
+                                        <p>Faculty Members</p>
+                                        <h3>{facultyList.length || 0}</h3>
+                                    </div>
+                                </div>
+                                <div className={styles.statCard} onClick={() => setActiveTab('performance')} style={{ cursor: 'pointer' }}>
+                                    <div className={`${styles.iconBox} ${styles.purple}`}><FileText size={24} /></div>
+                                    <div className={styles.statInfo}>
+                                        <p style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                            Dept. Average
+                                            <span style={{fontSize: '0.7rem', color: '#64748b', fontWeight: 500}}>({analytics?.completedStudents || 0}/{deptStudents.length || 0} completed)</span>
+                                        </p>
+                                        <h3 style={{ marginTop: '4px' }}>{analytics ? Math.round((analytics.average / 100) * 50 * 10) / 10 : '-'}/50</h3>
+                                    </div>
+                                </div>
+                                <div className={styles.statCard} onClick={() => setActiveTab('performance')} style={{ cursor: 'pointer' }}>
+                                    <div className={`${styles.iconBox} ${styles.orange}`}><Activity size={24} /></div>
+                                    <div className={styles.statInfo}>
+                                        <p>Pass Percentage</p>
+                                        <h3>{analytics ? analytics.passPercentage : '-'}%</h3>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    <div className={styles.gridTwoOne}>
+                        <div className={styles.leftColumn}>
+                            <div className={styles.card} style={{ marginBottom: '1.5rem' }}>
+                                <div className={styles.cardHeader}>
+                                    <h3>Department Performance (Avg IA Score)</h3>
+                                </div>
+                                <div className={styles.circlesContainer}>
+                                    {loading ? (
+                                        Array.from({ length: 3 }).map((_, i) => (
+                                            <div key={i} className={styles.circleItem}>
+                                                <Skeleton variant="circle" width="120px" height="120px" />
+                                                <Skeleton width="80px" height="14px" style={{ marginTop: '1rem' }} />
+                                            </div>
+                                        ))
+                                    ) : analytics ? (
+                                        [{ label: `Avg % (${analytics?.completedStudents || 0} completed)`, value: Math.round(analytics.average || 0) },
+                                        { label: 'Pass Rate', value: analytics.passPercentage || 0 },
+                                        { label: 'Risk Factor', value: (analytics.totalStudents || deptStudents.length) > 0 ? Math.round(((analytics.atRiskCount || 0) / (analytics.totalStudents || deptStudents.length)) * 100) : 0 }]
+                                            .map((metric, index) => {
+                                                const data = { labels: ['Metric', 'Remaining'], datasets: [{ data: [metric.value, 100 - metric.value], backgroundColor: ['#8b5cf6', '#f3f4f6'], borderWidth: 0, cutout: '70%' }] };
+                                                return (
+                                                    <div key={index} className={styles.circleItem}>
+                                                        <div style={{ height: '120px', width: '120px', position: 'relative' }}>
+                                                            <Doughnut data={data} options={{ ...doughnutOptions, plugins: { legend: { display: false }, tooltip: { enabled: false } } }} />
+                                                            <div className={styles.circleLabel}><span className={styles.circleValue}>{metric.value}%</span></div>
+                                                        </div>
+                                                        <p className={styles.circleName}>{metric.label}</p>
+                                                    </div>
+                                                );
+                                            })
+                                    ) : (
+                                        <p style={{ padding: '2rem', textAlign: 'center', color: '#6b7280' }}>No Analytics Found</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className={styles.rightColumn}>
+                            <div className={styles.card}>
+                                <div className={styles.cardHeader}>
+                                    <h3>Recent Alerts</h3>
+                                    {departmentAlerts.length > 3 && (
+                                        <button className={styles.secondaryBtn} style={{ fontSize: '0.8rem', padding: '4px 8px' }} onClick={() => setShowAllAlerts(!showAllAlerts)}>
+                                            {showAllAlerts ? 'Show Less' : 'View All'}
+                                        </button>
+                                    )}
+                                </div>
+                                <div className={styles.alertList}>
+                                    {loading ? (
+                                        Array.from({ length: 3 }).map((_, i) => (
+                                            <div key={i} className={styles.alertItem}>
+                                                <Skeleton variant="circle" width="16px" height="16px" />
+                                                <div style={{ flex: 1 }}>
+                                                    <Skeleton width="100%" height="14px" style={{ marginBottom: '4px' }} />
+                                                    <Skeleton width="60px" height="12px" />
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : departmentAlerts.length > 0 ? (
+                                        (showAllAlerts ? departmentAlerts : departmentAlerts.slice(0, 3)).map(alert => (
+                                            <div key={alert.id} className={`${styles.alertItem} ${styles[alert.type]}`}>
+                                                <AlertTriangle size={16} />
+                                                <div>
+                                                    <p>{alert.message}</p>
+                                                    <span>{alert.date}</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p style={{ padding: '1rem', textAlign: 'center', color: '#6b7280' }}>No recent alerts</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {activeTab === 'update-marks' && (<div className={styles.updateMarksContainer}><div className={styles.card}><div className={styles.cardHeader}><h3>Modify Student Marks</h3>
+                {loading ? (
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <Skeleton width="150px" height="38px" />
+                        <Skeleton width="150px" height="38px" />
+                        <Skeleton width="180px" height="38px" />
+                    </div>
+                ) : (
+                <div className={styles.filterGroup}>
+                <select className={styles.deptSelect} value={selectedSemester} onChange={(e) => { 
+                    setIsTableLoading(true);
+                    setSelectedSemester(e.target.value); 
+                    setSelectedSubject(null); 
+                    setTimeout(() => setIsTableLoading(false), 30);
+                }} style={{ marginRight: '10px' }}>
                     <option value="all">All Semesters</option>
                     {[1, 2, 3, 4, 5, 6].map(sem => (
                         <option key={sem} value={sem}>{sem}{sem === 1 ? 'st' : sem === 2 ? 'nd' : sem === 3 ? 'rd' : 'th'} Semester</option>
@@ -1949,160 +2525,91 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                     <option value="cie4">CIE-4</option>
                     <option value="cie5">CIE-5</option>
                 </select>
-                <select className={styles.deptSelect} value={selectedSubject?.id || ''} onChange={(e) => { const sub = subjects.find(s => s.id === parseInt(e.target.value)); setSelectedSubject(sub); }}>
-                    {subjects.filter(sub => {
-                        // Filter out IC
-                        if (sub.name === 'IC') return false;
-
-                        // Filter by semester if selected
-                        if (selectedSemester !== 'all' && sub.semester != selectedSemester) return false;
-
-                        return true;
-                    }).map(sub => (<option key={sub.id} value={sub.id}>{sub.name}</option>))}
-                </select><button className={styles.saveBtn} onClick={saveMarks}><Save size={16} /> Save Changes</button></div></div><p className={styles.helperText}>Edit marks directly in the table. Changes are tracked locally until saved. Max Marks: CIE-1 to CIE-5 (50 each) - Total (250)</p><div className={styles.tableWrapper}><table className={styles.table} style={selectedCieType === 'all' ? { minWidth: '1800px' } : {}}><thead><tr><th>Sl. No.</th><th style={{ width: '150px', minWidth: '150px' }}>Reg No</th><th style={{ width: '350px', minWidth: '350px' }}>Student Name</th>
-                    {['cie1', 'all'].includes(selectedCieType) && <th style={['cie1', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-1 (50)</th>}
-                    {['cie1', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
-                    {['cie2', 'all'].includes(selectedCieType) && <th style={['cie2', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-2 (50)</th>}
-                    {['cie2', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
-                    {['cie3', 'all'].includes(selectedCieType) && <th style={['cie3', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-3 (50)</th>}
-                    {['cie3', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
-                    {['cie4', 'all'].includes(selectedCieType) && <th style={['cie4', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-4 (50)</th>}
-                    {['cie4', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
-                    {['cie5', 'all'].includes(selectedCieType) && <th style={['cie5', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-5 (50)</th>}
-                    {['cie5', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
-                    <th>Total (250)</th><th style={{ background: '#fefce8', color: '#a16207', width: '250px', minWidth: '250px' }}>Remarks</th></tr></thead><tbody>{students.filter(s => selectedSemester === 'all' || s.semester == selectedSemester).map((student, index) => {
-                        const editMark = editingMarks[student.id] || {};
-                        const valCIE1 = (editMark.cie1 !== undefined && editMark.cie1 !== null) ? editMark.cie1 : '';
-                        const valCIE2 = (editMark.cie2 !== undefined && editMark.cie2 !== null) ? editMark.cie2 : '';
-                        const valCIE3 = (editMark.cie3 !== undefined && editMark.cie3 !== null) ? editMark.cie3 : '';
-                        const valCIE4 = (editMark.cie4 !== undefined && editMark.cie4 !== null) ? editMark.cie4 : '';
-                        const valCIE5 = (editMark.cie5 !== undefined && editMark.cie5 !== null) ? editMark.cie5 : '';
-                        const att1Val = (editMark.cie1Att !== undefined && editMark.cie1Att !== null) ? editMark.cie1Att : '';
-                        const att2Val = (editMark.cie2Att !== undefined && editMark.cie2Att !== null) ? editMark.cie2Att : '';
-                        const att3Val = (editMark.cie3Att !== undefined && editMark.cie3Att !== null) ? editMark.cie3Att : '';
-                        const att4Val = (editMark.cie4Att !== undefined && editMark.cie4Att !== null) ? editMark.cie4Att : '';
-                        const att5Val = (editMark.cie5Att !== undefined && editMark.cie5Att !== null) ? editMark.cie5Att : '';
-                        const total = (Number(valCIE1) || 0) + (Number(valCIE2) || 0) + (Number(valCIE3) || 0) + (Number(valCIE4) || 0) + (Number(valCIE5) || 0);
-                        const cieVals = [
-                            { key: 'CIE-1', val: valCIE1, att: att1Val !== '' ? parseFloat(att1Val) : null },
-                            { key: 'CIE-2', val: valCIE2, att: att2Val !== '' ? parseFloat(att2Val) : null },
-                            { key: 'CIE-3', val: valCIE3, att: att3Val !== '' ? parseFloat(att3Val) : null },
-                            { key: 'CIE-4', val: valCIE4, att: att4Val !== '' ? parseFloat(att4Val) : null },
-                            { key: 'CIE-5', val: valCIE5, att: att5Val !== '' ? parseFloat(att5Val) : null }
-                        ];
-                        const parts = []; let worstColor = '#94a3b8'; let worstBg = 'transparent';
-                        cieVals.forEach(c => {
-                            const v = c.val !== '' && c.val !== null && c.val !== undefined ? parseFloat(c.val) : null;
-                            const att = c.att;
-                            if (v == null) return;
-                            if (v < 25 && att != null && att < 75) {
-                                parts.push(`${c.key}: Low Marks, Low Att`); worstColor = '#dc2626'; worstBg = '#fef2f2';
-                            } else if (v < 25) {
-                                parts.push(`${c.key}: Low Marks`);
-                                if (worstColor !== '#dc2626') { worstColor = '#ea580c'; worstBg = '#fff7ed'; }
-                            } else if (att != null && att < 75) {
-                                if (!parts.some(p => p.includes('Low Att'))) { parts.push('Low Att'); }
-                                if (worstColor !== '#dc2626') { worstColor = '#ea580c'; worstBg = '#fff7ed'; }
+                <select className={styles.deptSelect} value={selectedSubject?.id || ''} disabled={!selectedSemester || selectedSemester === 'all'} onChange={(e) => {
+                    setIsTableLoading(true);
+                    if (!e.target.value) { 
+                        setSelectedSubject(null); 
+                        setTimeout(() => setIsTableLoading(false), 30);
+                        return; 
+                    }
+                    const sub = subjects.find(s => s.id === parseInt(e.target.value));
+                    setSelectedSubject(sub);
+                    setTimeout(() => setIsTableLoading(false), 30);
+                }} style={!selectedSemester || selectedSemester === 'all' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
+                    <option value="">{!selectedSemester || selectedSemester === 'all' ? '← Select Semester First' : 'Select Subject'}</option>
+                    {selectedSemester && selectedSemester !== 'all' && (() => {
+                        const seen = new Set();
+                        // First pass: collect all clean names that have a Theory version
+                        const theoryNames = new Set();
+                        subjects.forEach(sub => {
+                            if (sub.name === 'IC') return;
+                            if (sub.semester != selectedSemester) return;
+                            if (/\(Theory\)/i.test(sub.name)) {
+                                theoryNames.add(sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim());
                             }
                         });
-                        const filledCount = cieVals.filter(c => c.val !== '' && c.val !== null && c.val !== undefined).length;
-                        let remark = '-'; let remarkColor = '#94a3b8'; let remarkBg = 'transparent';
-                        if (parts.length > 0) {
-                            remark = parts.join(' | '); remarkColor = worstColor; remarkBg = worstBg;
-                        } else if (filledCount > 0) {
-                            const avg = total / filledCount;
-                            const allAttGood = cieVals.filter(c => c.att != null).every(c => c.att >= 75);
-                            if (avg >= 40 && allAttGood) { remark = 'Excellent'; remarkColor = '#15803d'; remarkBg = '#f0fdf4'; }
-                            else { remark = 'Good'; remarkColor = '#2563eb'; remarkBg = '#eff6ff'; }
-                        }
-                        return (<tr key={student.id}><td>{index + 1}</td><td style={{ width: '150px', minWidth: '150px', fontWeight: 600 }}>{student.regNo}</td><td style={{ width: '350px', minWidth: '350px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '350px', fontWeight: 500 }} title={student.name}>{student.name}</td>
-                            {['cie1', 'all'].includes(selectedCieType) && <td style={['cie1', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><input type="number" className={styles.markInput} value={valCIE1} max={50} onChange={(e) => handleMarkChange(student.id, 'cie1', e.target.value)} /></td>}
-                            {['cie1', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><input type="number" className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att1Val} max={100} onChange={(e) => handleMarkChange(student.id, 'cie1Att', e.target.value)} /></td>}
-                            {['cie2', 'all'].includes(selectedCieType) && <td style={['cie2', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><input type="number" className={styles.markInput} value={valCIE2} max={50} onChange={(e) => handleMarkChange(student.id, 'cie2', e.target.value)} /></td>}
-                            {['cie2', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><input type="number" className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att2Val} max={100} onChange={(e) => handleMarkChange(student.id, 'cie2Att', e.target.value)} /></td>}
-                            {['cie3', 'all'].includes(selectedCieType) && <td style={['cie3', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><input type="number" className={styles.markInput} value={valCIE3} max={50} onChange={(e) => handleMarkChange(student.id, 'cie3', e.target.value)} /></td>}
-                            {['cie3', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><input type="number" className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att3Val} max={100} onChange={(e) => handleMarkChange(student.id, 'cie3Att', e.target.value)} /></td>}
-                            {['cie4', 'all'].includes(selectedCieType) && <td style={['cie4', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><input type="number" className={styles.markInput} value={valCIE4} max={50} onChange={(e) => handleMarkChange(student.id, 'cie4', e.target.value)} /></td>}
-                            {['cie4', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><input type="number" className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att4Val} max={100} onChange={(e) => handleMarkChange(student.id, 'cie4Att', e.target.value)} /></td>}
-                            {['cie5', 'all'].includes(selectedCieType) && <td style={['cie5', 'all'].includes(selectedCieType) && selectedCieType !== 'all' ? { background: '#f8fafc' } : {}}><input type="number" className={styles.markInput} value={valCIE5} max={50} onChange={(e) => handleMarkChange(student.id, 'cie5', e.target.value)} /></td>}
-                            {['cie5', 'all'].includes(selectedCieType) && <td style={{ background: '#f0fdf4' }}><input type="number" className={styles.markInput} style={{ border: '1px solid #86efac', color: '#15803d', background: '#f0fdf4' }} value={att5Val} max={100} onChange={(e) => handleMarkChange(student.id, 'cie5Att', e.target.value)} /></td>}
+                        return subjects.filter(sub => {
+                            if (sub.name === 'IC') return false;
+                            if (sub.semester != selectedSemester) return false;
 
-                            <td style={{ fontWeight: 'bold' }}>{Math.min(total, 250)}</td>
-
-                            {(() => {
-                                const getCieRemark = (v, a, label) => {
-                                    if (v == null || isNaN(v) || a == null || isNaN(a)) return null;
-                                    return {
-                                        label,
-                                        lowMarks: v < 25,
-                                        lowAtt: a < 75,
-                                        excellent: v >= 40 && a >= 75,
-                                        severity: (v < 25 && a < 75) ? 3 : (v < 25 ? 2 : (a < 75 ? 2 : 0)),
-                                        text: (v < 25 && a < 75) ? `${label}: Low Marks, Low Att` :
-                                            (v < 25 ? `${label}: Low Marks` :
-                                                (a < 75 ? `${label}: Low Att` :
-                                                    (v >= 40 && a >= 75 ? `${label}: Excellent` : `${label}: Good`)))
-                                    };
-                                };
-
-                                const allCies = [
-                                    getCieRemark(valCIE1 !== '' ? parseFloat(valCIE1) : null, att1Val !== '' ? parseFloat(att1Val) : null, 'CIE-1'),
-                                    getCieRemark(valCIE2 !== '' ? parseFloat(valCIE2) : null, att2Val !== '' ? parseFloat(att2Val) : null, 'CIE-2'),
-                                    getCieRemark(valCIE3 !== '' ? parseFloat(valCIE3) : null, att3Val !== '' ? parseFloat(att3Val) : null, 'CIE-3'),
-                                    getCieRemark(valCIE4 !== '' ? parseFloat(valCIE4) : null, att4Val !== '' ? parseFloat(att4Val) : null, 'CIE-4'),
-                                    getCieRemark(valCIE5 !== '' ? parseFloat(valCIE5) : null, att5Val !== '' ? parseFloat(att5Val) : null, 'CIE-5')
-                                ];
-                                const filled = allCies.filter(r => r !== null);
-
-                                if (selectedCieType === 'all' && filled.length > 0) {
-                                    const worst = Math.max(...filled.map(r => r.severity));
-                                    const color = worst >= 3 ? '#dc2626' : worst >= 2 ? '#ea580c' : '#15803d';
-                                    const bg = worst >= 3 ? '#fef2f2' : worst >= 2 ? '#fff7ed' : '#f0fdf4';
-
-                                    const lowMarksCies = filled.filter(r => r.lowMarks).map(r => r.label);
-                                    const lowAttCies = filled.filter(r => r.lowAtt).map(r => r.label);
-
-                                    let textParts = [];
-                                    if (lowMarksCies.length > 0) textParts.push(`${lowMarksCies.join(',')} Low Marks`);
-                                    if (lowAttCies.length > 0) textParts.push(`${lowAttCies.join(',')} Low Att`);
-                                    if (textParts.length === 0) {
-                                        const allExcellent = filled.every(r => r.excellent);
-                                        textParts.push(allExcellent ? 'All Excellent' : 'All Good');
-                                    }
-                                    const text = textParts.join(' | ');
-                                    return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
-                                        <div style={{ fontSize: '0.65rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{text}</div>
-                                    </td>;
-                                } else if (selectedCieType === 'all') {
-                                    return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
-                                }
-
-                                /* Specific CIE selected */
-                                const indexMap = { 'cie1': 0, 'cie2': 1, 'cie3': 2, 'cie4': 3, 'cie5': 4 };
-                                const focused = allCies[indexMap[selectedCieType]];
-
-                                if (!focused) return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
-                                const color = focused.severity >= 3 ? '#dc2626' : focused.severity >= 2 ? '#ea580c' : focused.severity === 0 ? '#15803d' : '#2563eb';
-                                const bg = focused.severity >= 3 ? '#fef2f2' : focused.severity >= 2 ? '#fff7ed' : '#f0fdf4';
-                                return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
-                                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{focused.text}</div>
-                                </td>;
-
-                            })()}
-                        </tr>);
-                    })}</tbody></table></div></div></div>)}
+                            const cleanName = sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim();
+                            // Skip Lab version if a Theory version exists
+                            if (/\(Lab\)/i.test(sub.name) && theoryNames.has(cleanName)) return false;
+                            if (seen.has(cleanName)) return false;
+                            seen.add(cleanName);
+                            return true;
+                        }).map(sub => {
+                            const cleanName = sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim();
+                            return <option key={sub.id} value={sub.id}>{cleanName}</option>;
+                        });
+                    })()}
+                </select><button className={styles.saveBtn} onClick={saveMarks} disabled={selectedSemester === 'all' || !selectedSubject}><Save size={16} /> Save Changes</button></div>
+                )}
+                </div>
+                {loading || isTableLoading ? (
+                    <div style={{ padding: '0 1.5rem 1.5rem 1.5rem' }}>
+                        <Skeleton width="100%" height="40px" style={{ marginBottom: '1rem' }} />
+                        <Skeleton width="100%" height="300px" />
+                    </div>
+                ) : selectedSemester !== 'all' && selectedSemester && selectedSubject ? (
+                    <>
+                        <p className={styles.helperText}>Edit marks directly in the table. Changes are tracked locally until saved. Max Marks: CIE-1 to CIE-5 (50 each) - Total (250)</p>
+                        <div className={styles.tableWrapper}>
+                            <table className={styles.table} style={selectedCieType === 'all' ? { minWidth: '1800px' } : {}}><thead><tr><th>Sl. No.</th><th style={{ width: '150px', minWidth: '150px' }}>Reg No</th><th style={{ width: '350px', minWidth: '350px' }}>Student Name</th>
+                                {['cie1', 'all'].includes(selectedCieType) && <th style={['cie1', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-1 (50)</th>}
+                                {['cie1', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
+                                {['cie2', 'all'].includes(selectedCieType) && <th style={['cie2', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-2 (50)</th>}
+                                {['cie2', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
+                                {['cie3', 'all'].includes(selectedCieType) && <th style={['cie3', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-3 (50)</th>}
+                                {['cie3', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
+                                {['cie4', 'all'].includes(selectedCieType) && <th style={['cie4', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-4 (50)</th>}
+                                {['cie4', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
+                                {['cie5', 'all'].includes(selectedCieType) && <th style={['cie5', 'all'].includes(selectedCieType) ? { background: '#eff6ff', color: '#1d4ed8' } : {}}>CIE-5 (50)</th>}
+                                {['cie5', 'all'].includes(selectedCieType) && <th style={{ background: '#f0fdf4', color: '#15803d' }}>Att (%)</th>}
+                                <th>Total (250)</th><th style={{ background: '#fefce8', color: '#a16207', width: '250px', minWidth: '250px' }}>Remarks</th></tr></thead><tbody>{students.filter(s => selectedSemester === 'all' || s.semester == selectedSemester).map((student, index) => (
+                                    <HODStudentRow
+                                        key={student.id}
+                                        student={student}
+                                        index={index}
+                                        editMark={editingMarks[student.id] || {}}
+                                        selectedCieType={selectedCieType}
+                                        styles={styles}
+                                        handleMarkChange={handleMarkChange}
+                                    />
+                                ))}</tbody></table></div></>) : (
+                    <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#64748b', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #cbd5e1', margin: '1rem' }}>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                        </div>
+                        <h4 style={{ margin: '0 0 0.5rem', color: '#334155', fontSize: '1.1rem' }}>Select Semester & Subject</h4>
+                        <p style={{ margin: 0, fontSize: '0.95rem' }}>Please choose a specific semester and subject from the dropdowns above to view and modify student marks.</p>
+                    </div>
+                )}
+            </div></div>)}
             {activeTab === 'monitoring' && (
                 <div className={styles.monitoringContainer}>
                     <div className={styles.card}>
                         <div className={styles.cardHeader}>
-                            <h3>Subject-wise IA Submission Status</h3>
-                            <div className={styles.filterGroup}>
-                                <select className={styles.deptSelect} style={{ padding: '0.4rem 0.8rem', fontSize: '0.9rem' }}>
-                                    <option>All Semesters</option>
-                                    <option>2nd Semester</option>
-                                    <option>4th Semester</option>
-                                </select>
-                            </div>
                         </div>
                         <table className={styles.table}>
                             <thead>
@@ -2252,23 +2759,27 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                         onClick={async () => {
                                             const category = hodPerformanceTab === 'low' ? 'Low' : 'Average';
                                             const defaultMsg = `Dear Student, your CIE performance is in the ${category} category. Please improve your preparation and consult your faculty for guidance. - HOD`;
-                                            const msg = prompt(`Send message to all ${filteredList.length} ${category} performers:`, defaultMsg);
+                                            const msg = await showPrompt({
+                                                title: `Message ${category} Performers`,
+                                                message: `Send message to all ${filteredList.length} ${category} performers:`,
+                                                defaultValue: defaultMsg,
+                                                multiline: true,
+                                                confirmText: 'Send'
+                                            });
                                             if (!msg) return;
                                             const uniqueStudentIds = [...new Set(filteredList.filter(s => s.studentId).map(s => s.studentId))];
-                                            if (uniqueStudentIds.length === 0) { alert('No student IDs found'); return; }
+                                            if (uniqueStudentIds.length === 0) { showToast('No student IDs found', 'error'); return; }
                                             let sent = 0;
                                             try {
-                                                const token = user?.token;
-                                                const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
                                                 for (const sid of uniqueStudentIds) {
-                                                    const res = await fetch(`${API_BASE_URL}/notifications/direct`, {
-                                                        method: 'POST', headers,
+                                                    const res = await authenticatedFetch(`${API_BASE_URL}/notifications/direct`, {
+                                                        method: 'POST',
                                                         body: JSON.stringify({ userId: sid, message: msg, type: 'INFO', category: 'HOD' })
                                                     });
                                                     if (res.ok) sent++;
                                                 }
-                                                alert(`Message sent to ${sent}/${uniqueStudentIds.length} students successfully!`);
-                                            } catch (e) { alert(`Sent to ${sent} students. Error occurred.`); }
+                                                showToast(`Message sent to ${sent}/${uniqueStudentIds.length} students successfully!`);
+                                            } catch (e) { showToast(`Sent to ${sent} students. Error occurred.`, 'error'); }
                                         }}
                                         style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid #dbeafe', background: '#eff6ff', color: '#2563eb', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}
                                     >
@@ -2307,7 +2818,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                                             </span>
                                                             {hodPerformanceTab === 'low' && (
                                                                 <button
-                                                                    onClick={() => alert(`Alert sent to parent of ${item.name}`)}
+                                                                    onClick={() => showToast(`Alert sent to parent of ${item.name}`)}
                                                                     title="Notify Parent"
                                                                     style={{ color: '#dc2626', background: '#fef2f2', border: '1px solid #fee2e2', padding: '5px 10px', borderRadius: '8px', alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer' }}
                                                                 >
@@ -2335,28 +2846,329 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                     </div>
                 );
             })()}
-            {activeTab === 'faculty' && (<div className={styles.facultyContainer}><div className={styles.card}><div className={styles.cardHeader}><h3>Department Faculty ({facultyList.length})</h3><div style={{ display: 'flex', gap: '1rem', position: 'relative' }}><button className={styles.primaryBtn} onClick={() => { setEditingFaculty(null); setFacultyForm({ fullName: '', username: '', email: '', password: 'password', designation: 'Faculty', subjects: '' }); setShowAddFacultyModal(true); }} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Users size={16} /> Add New Faculty</button><div style={{ position: 'relative' }}><button className={styles.secondaryBtn} onClick={() => setShowEditSelection(!showEditSelection)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', border: '1px solid #e2e8f0' }}><Edit size={16} /> Edit Faculty</button>{showEditSelection && (<div style={{ position: 'absolute', top: '110%', right: 0, width: '250px', background: 'white', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', zIndex: 100, padding: '0.5rem' }}><p style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#64748b', borderBottom: '1px solid #f1f5f9', marginBottom: '0.5rem' }}>Select Faculty to Edit:</p><div style={{ maxHeight: '300px', overflowY: 'auto' }}>{facultyList.map(fac => (<button key={fac.id} onClick={() => { handleEditFaculty(fac); setShowEditSelection(false); }} style={{ width: '100%', textAlign: 'left', padding: '0.75rem', borderRadius: '6px', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '2px', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'} onMouseLeave={e => e.currentTarget.style.background = 'none'}><span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>{fac.fullName || fac.username}</span><small style={{ color: '#64748b' }}>{fac.designation || 'Faculty'}</small></button>))}</div></div>)}</div></div></div><div className={styles.facultyList} style={{ marginTop: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: '1.5rem' }}>{facultyList.length > 0 ? facultyList.map(fac => (<div key={fac.id} className={styles.facultyItem} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem', background: 'white', display: 'flex', flexDirection: 'column' }}><div className={styles.facProfile} style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}><div className={styles.avatarSm} style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem' }}>{fac.fullName ? fac.fullName.charAt(0) : fac.username.charAt(0)}</div><div style={{ flex: 1 }}><p className={styles.facName} style={{ fontWeight: 600, fontSize: '1.1rem', color: '#1e293b', margin: 0 }}>{fac.fullName || fac.username}</p><small className={styles.facStatus} style={{ color: '#64748b' }}>{fac.designation || 'Faculty Member'}</small>{(fac.semester || fac.section) && (<small style={{ color: '#2563eb', fontWeight: 500, fontSize: '0.8rem', marginTop: '2px', display: 'block' }}>Class Teacher: {fac.semester ? `${fac.semester} Sem` : ''} {fac.section ? `- Sec ${fac.section}` : ''}</small>)}</div></div><div style={{ marginBottom: '1rem', flex: 1 }}><span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Subjects ({parseSubjects(fac.subjects).length})</span><div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>{parseSubjects(fac.subjects).length > 0 ? parseSubjects(fac.subjects).map((sub, i) => (<span key={i} style={{ fontSize: '0.8rem', background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', color: '#475569' }}>{sub}</span>)) : (<span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>No active subjects assigned</span>)}</div></div><div className={styles.facActions} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}><button className={styles.viewBtn} style={{ gridColumn: 'span 2' }} onClick={() => handleViewDashboard(fac)}><LayoutDashboard size={16} /> View Dashboard</button><button className={styles.msgBtn} onClick={() => handleMessage(fac)}><Mail size={16} /> Message</button><button className={styles.secondaryBtn} onClick={() => handleEditFaculty(fac)} style={{ border: '1px solid #e2e8f0', background: 'white', color: '#475569' }}><Edit size={16} /> Edit</button><button className={styles.secondaryBtn} onClick={() => openResetPasswordModal(fac.username, fac.fullName || fac.username, 'FACULTY')} style={{ border: '1px solid #fde68a', background: '#fef3c7', color: '#d97706' }}><Key size={14} /> Reset</button><button className={styles.secondaryBtn} onClick={() => handleDeleteFaculty(fac.id)} style={{ border: '1px solid #fee2e2', background: '#fef2f2', color: '#dc2626' }}><Trash2 size={16} /> Remove</button></div></div>)) : (<div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', color: '#64748b' }}><Users size={48} style={{ marginBottom: '1rem', color: '#cbd5e1' }} /><p>No faculty members found for this department.</p></div>)}</div></div>{showAddFacultyModal && (<div className={styles.modalOverlay}><div className={styles.modalContent} style={{ maxWidth: '500px' }}><div className={styles.modalHeader}><h3>{editingFaculty ? 'Edit Faculty' : 'Add New Faculty'}</h3><button className={styles.closeBtn} onClick={() => setShowAddFacultyModal(false)}><X size={24} /></button></div><div className={styles.modalBody}><form onSubmit={handleAddFaculty} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}><div className={styles.formGroup}><label>Full Name</label><input value={facultyForm.fullName} onChange={e => setFacultyForm({ ...facultyForm, fullName: e.target.value })} required placeholder="e.g. Dr. John Doe" className={styles.input} /></div><div className={styles.formGroup}><label>Username</label><input value={facultyForm.username} onChange={e => setFacultyForm({ ...facultyForm, username: e.target.value })} required placeholder="jdoe" className={styles.input} />{editingFaculty && <small style={{ color: '#64748b', fontSize: '0.75rem' }}>⚠️ Changing the username will update the faculty's login ID.</small>}</div><div className={styles.formGroup}><label>Email</label><input value={facultyForm.email} onChange={e => setFacultyForm({ ...facultyForm, email: e.target.value })} type="email" required placeholder="john@college.edu" className={styles.input} /></div>{!editingFaculty && (<div className={styles.formGroup}><label>Password</label><input value={facultyForm.password} onChange={e => setFacultyForm({ ...facultyForm, password: e.target.value })} required placeholder="password" className={styles.input} /></div>)}<div className={styles.formGroup}><label>Designation</label><select value={facultyForm.designation} onChange={e => setFacultyForm({ ...facultyForm, designation: e.target.value })} className={styles.input}><option>Faculty</option><option>Guest Faculty</option></select></div><div className={styles.formGroup}><label>CIE Role</label><select value={facultyForm.cieRole || ''} onChange={e => setFacultyForm({ ...facultyForm, cieRole: e.target.value })} className={styles.input}><option value=''>All CIEs (Default)</option><option value='THEORY'>Theory Only (CIE-1, 2, 5)</option><option value='LAB'>Lab Only (CIE-3, 4)</option></select><small style={{ color: '#64748b', fontSize: '0.75rem' }}>Set for subjects shared between Theory and Lab faculty.</small></div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}><button type="button" className={styles.secondaryBtn} onClick={() => setShowAddFacultyModal(false)}>Cancel</button><button type="submit" className={styles.primaryBtn} style={{ background: '#2563eb', color: 'white' }}>{editingFaculty ? 'Update Faculty' : 'Create Account'}</button></div></form></div></div></div>)}
-                {viewingFaculty && (<div className={styles.modalOverlay} onClick={() => setViewingFaculty(null)}><div className={styles.modalContent} style={{ maxWidth: '700px' }} onClick={e => e.stopPropagation()}><div className={styles.modalHeader}><div><h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>{viewingFaculty.fullName || viewingFaculty.username}</h2><span className={styles.badge} style={{ position: 'static', padding: '2px 8px', borderRadius: '4px', background: '#eff6ff', color: '#2563eb', fontWeight: 500, fontSize: '0.85rem' }}>Dashboard Overview</span></div><button className={styles.closeBtn} onClick={() => setViewingFaculty(null)}><X size={24} /></button></div><div className={styles.modalBody}>{(() => {
-                    let totalAvg = 0;
-                    let evaluatedCount = 0;
-                    const subStats = parseSubjects(viewingFaculty.subjects).map(subName => {
-                        const marks = subjectMarksData[subName] || [];
-                        const validMarks = marks.filter(m => m.cie1Score !== null || m.cie2Score !== null || m.cie3Score !== null || m.cie4Score !== null || m.cie5Score !== null);
-                        const avg = validMarks.length > 0 ? Math.round(validMarks.reduce((acc, m) => {
-                            const scores = [m.cie1Score, m.cie2Score, m.cie3Score, m.cie4Score, m.cie5Score].filter(x => x !== null && x !== undefined);
-                            const studentAvg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-                            return acc + studentAvg;
-                        }, 0) / validMarks.length) : 0;
+            {activeTab === 'faculty' && (
+                <div className={styles.facultyContainer}>
+                    <div className={styles.card}>
+                        <div className={styles.cardHeader}>
+                            <h3>Department Faculty ({facultyList.length})</h3>
+                            <div style={{ display: 'flex', gap: '1rem', position: 'relative' }}>
+                                <button className={styles.primaryBtn} onClick={() => { setEditingFaculty(null); setFacultyForm({ fullName: '', username: '', email: '', password: 'password', designation: 'Faculty', subjects: '' }); setShowAddFacultyModal(true); }} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Users size={16} /> Add New Faculty</button>
+                                <div style={{ position: 'relative' }}>
+                                    <button className={styles.secondaryBtn} onClick={() => setShowEditSelection(!showEditSelection)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#f8fafc', border: '1px solid #e2e8f0' }}><Edit size={16} /> Edit Faculty</button>
+                                    {showEditSelection && (
+                                        <div style={{ position: 'absolute', top: '110%', right: 0, width: '250px', background: 'white', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', zIndex: 100, padding: '0.5rem' }}>
+                                            <p style={{ padding: '0.5rem', fontSize: '0.85rem', color: '#64748b', borderBottom: '1px solid #f1f5f9', marginBottom: '0.5rem' }}>Select Faculty to Edit:</p>
+                                            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                                {facultyList.map(fac => (
+                                                    <button key={fac.id} onClick={() => { handleEditFaculty(fac); setShowEditSelection(false); }} style={{ width: '100%', textAlign: 'left', padding: '0.75rem', borderRadius: '6px', border: 'none', background: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '2px', transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'} onMouseLeave={e => e.currentTarget.style.background = 'none'}><span style={{ fontWeight: 600, fontSize: '0.9rem', color: '#1e293b' }}>{fac.fullName || fac.username}</span><small style={{ color: '#64748b' }}>{fac.designation || 'Faculty'}</small></button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <div className={styles.facultyList} style={{ marginTop: '1.5rem', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))', gap: '1.5rem' }}>
+                            {loading ? (
+                                Array.from({ length: 6 }).map((_, i) => (
+                                    <div key={i} className={styles.facultyItem} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem', background: 'white' }}>
+                                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
+                                            <Skeleton variant="circle" width="48px" height="48px" />
+                                            <div style={{ flex: 1 }}>
+                                                <Skeleton width="120px" height="16px" style={{ marginBottom: '4px' }} />
+                                                <Skeleton width="80px" height="12px" />
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '1rem' }}>
+                                            <Skeleton width="60px" height="12px" style={{ marginBottom: '8px' }} />
+                                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                                <Skeleton width="60px" height="24px" />
+                                                <Skeleton width="60px" height="24px" />
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                            <Skeleton width="100%" height="32px" style={{ gridColumn: 'span 2' }} />
+                                            <Skeleton width="100%" height="32px" />
+                                            <Skeleton width="100%" height="32px" />
+                                        </div>
+                                    </div>
+                                ))
+                            ) : facultyList.length > 0 ? (
+                                facultyList.map(fac => (
+                                    <div key={fac.id} className={styles.facultyItem} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1.5rem', background: 'white', display: 'flex', flexDirection: 'column' }}>
+                                        <div className={styles.facProfile} style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
+                                            <div className={styles.avatarSm} style={{ width: '48px', height: '48px', borderRadius: '50%', background: '#eff6ff', color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '1.2rem' }}>{fac.fullName ? fac.fullName.charAt(0) : fac.username.charAt(0)}</div>
+                                            <div style={{ flex: 1 }}>
+                                                <p className={styles.facName} style={{ fontWeight: 600, fontSize: '1.1rem', color: '#1e293b', margin: 0 }}>{fac.fullName || fac.username}</p>
+                                                <small className={styles.facStatus} style={{ color: '#64748b' }}>{fac.designation || 'Faculty Member'}</small>
+                                                {(fac.semester || fac.section) && (<small style={{ color: '#2563eb', fontWeight: 500, fontSize: '0.8rem', marginTop: '2px', display: 'block' }}>Class Teacher: {fac.semester ? `${fac.semester} Sem` : ''} {fac.section ? `- Sec ${fac.section}` : ''}</small>)}
+                                            </div>
+                                        </div>
+                                        <div style={{ marginBottom: '1rem', flex: 1 }}>
+                                            <span style={{ fontSize: '0.85rem', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Subjects ({parseSubjects(fac.subjects).length})</span>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                                {parseSubjects(fac.subjects).length > 0 ? parseSubjects(fac.subjects).map((sub, i) => (
+                                                    <span key={i} style={{ fontSize: '0.8rem', background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', color: '#475569' }}>{sub}</span>
+                                                )) : (
+                                                    <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>No active subjects assigned</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className={styles.facActions} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                                            <button className={styles.viewBtn} style={{ gridColumn: 'span 2' }} onClick={() => handleViewDashboard(fac)}><LayoutDashboard size={16} /> View Dashboard</button>
+                                            <button className={styles.msgBtn} onClick={() => handleMessage(fac)}><Mail size={16} /> Message</button>
+                                            <button className={styles.secondaryBtn} onClick={() => handleEditFaculty(fac)} style={{ border: '1px solid #e2e8f0', background: 'white', color: '#475569' }}><Edit size={16} /> Edit</button>
+                                            <button className={styles.secondaryBtn} onClick={() => openResetPasswordModal(fac.username, fac.fullName || fac.username, 'FACULTY')} style={{ border: '1px solid #fde68a', background: '#fef3c7', color: '#d97706' }}><Key size={14} /> Reset</button>
+                                            <button className={styles.secondaryBtn} onClick={() => handleDeleteFaculty(fac.id)} style={{ border: '1px solid #fee2e2', background: '#fef2f2', color: '#dc2626' }}><Trash2 size={16} /> Remove</button>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+                                    <Users size={48} style={{ marginBottom: '1rem', color: '#cbd5e1' }} />
+                                    <p>No faculty members found for this department.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    {showAddFacultyModal && (
+                        <div className={styles.modalOverlay}>
+                            <div className={styles.modalContent} style={{ maxWidth: '500px' }}>
+                                <div className={styles.modalHeader}>
+                                    <h3>{editingFaculty ? 'Edit Faculty' : 'Add New Faculty'}</h3>
+                                    <button className={styles.closeBtn} onClick={() => setShowAddFacultyModal(false)}><X size={24} /></button>
+                                </div>
+                                <div className={styles.modalBody}>
+                                    <form onSubmit={handleAddFaculty} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        <div className={styles.formGroup}><label>Full Name</label><input value={facultyForm.fullName} onChange={e => setFacultyForm({ ...facultyForm, fullName: e.target.value })} required placeholder="e.g. Dr. John Doe" className={styles.input} /></div>
+                                        <div className={styles.formGroup}><label>Username</label><input value={facultyForm.username} onChange={e => setFacultyForm({ ...facultyForm, username: e.target.value })} required placeholder="jdoe" className={styles.input} />{editingFaculty && <small style={{ color: '#64748b', fontSize: '0.75rem' }}>⚠️ Changing the username will update the faculty's login ID.</small>}</div>
+                                        <div className={styles.formGroup}><label>Email</label><input value={facultyForm.email} onChange={e => setFacultyForm({ ...facultyForm, email: e.target.value })} type="email" required placeholder="john@college.edu" className={styles.input} /></div>
+                                        {!editingFaculty && (<div className={styles.formGroup}><label>Password</label><input value={facultyForm.password} onChange={e => setFacultyForm({ ...facultyForm, password: e.target.value })} required placeholder="password" className={styles.input} /></div>)}
+                                        <div className={styles.formGroup}><label>Designation</label><select value={facultyForm.designation} onChange={e => setFacultyForm({ ...facultyForm, designation: e.target.value })} className={styles.input}><option>Faculty</option><option>Guest Faculty</option></select></div>
+                                        <div className={styles.formGroup}><label>CIE Role</label><select value={facultyForm.cieRole || ''} onChange={e => setFacultyForm({ ...facultyForm, cieRole: e.target.value })} className={styles.input}><option value=''>All CIEs (Default)</option><option value='THEORY'>Theory Only (CIE-1, 2, 5)</option><option value='LAB'>Lab Only (CIE-3, 4)</option></select><small style={{ color: '#64748b', fontSize: '0.75rem' }}>Set for subjects shared between Theory and Lab faculty.</small></div>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
+                                            <button type="button" className={styles.secondaryBtn} onClick={() => setShowAddFacultyModal(false)}>Cancel</button>
+                                            <button type="submit" className={styles.primaryBtn} style={{ background: '#2563eb', color: 'white' }}>{editingFaculty ? 'Update Faculty' : 'Create Account'}</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
+            {viewingFaculty && (<div className={styles.modalOverlay} onClick={() => setViewingFaculty(null)}><div className={styles.modalContent} style={{ maxWidth: '700px' }} onClick={e => e.stopPropagation()}><div className={styles.modalHeader}><div><h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>{viewingFaculty.fullName || viewingFaculty.username}</h2><span className={styles.badge} style={{ position: 'static', padding: '2px 8px', borderRadius: '4px', background: '#eff6ff', color: '#2563eb', fontWeight: 500, fontSize: '0.85rem' }}>Dashboard Overview</span></div><button className={styles.closeBtn} onClick={() => setViewingFaculty(null)}><X size={24} /></button></div><div className={styles.modalBody}>{(() => {
+                let totalAvg = 0;
+                let evaluatedCount = 0;
+                const subStats = parseSubjects(viewingFaculty.subjects).map(subName => {
+                    const marks = subjectMarksData[subName] || [];
+                    const validMarks = marks.filter(m => m.cie1Score !== null || m.cie2Score !== null || m.cie3Score !== null || m.cie4Score !== null || m.cie5Score !== null);
+                    const avg = validMarks.length > 0 ? Math.round(validMarks.reduce((acc, m) => {
+                        const scores = [m.cie1Score, m.cie2Score, m.cie3Score, m.cie4Score, m.cie5Score].filter(x => x !== null && x !== undefined);
+                        const studentAvg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+                        return acc + studentAvg;
+                    }, 0) / validMarks.length) : 0;
 
-                        if (validMarks.length > 0) evaluatedCount += validMarks.length;
-                        totalAvg += avg;
-                        return { name: subName, avg, count: validMarks.length };
-                    });
-                    const overall = subStats.length > 0 ? Math.round(totalAvg / subStats.length) : 0;
+                    if (validMarks.length > 0) evaluatedCount += validMarks.length;
+                    totalAvg += avg;
+                    return { name: subName, avg, count: validMarks.length };
+                });
+                const overall = subStats.length > 0 ? Math.round(totalAvg / subStats.length) : 0;
 
-                    return (<><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}><div className={styles.statCard} style={{ background: '#f8fafc', border: 'none' }}><div className={`${styles.iconBox} ${styles.blue}`}><TrendingUp size={20} /></div><div><p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Avg Class Score</p><h3 style={{ margin: 0, fontSize: '1.25rem' }}>{overall > 0 ? overall : '-'}/50</h3></div></div><div className={styles.statCard} style={{ background: '#f8fafc', border: 'none' }}><div className={`${styles.iconBox} ${styles.green}`}><CheckCircle size={20} /></div><div><p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Students Evaluated</p><h3 style={{ margin: 0, fontSize: '1.25rem' }}>{evaluatedCount}</h3></div></div></div><div><h4 style={{ marginBottom: '1rem', fontWeight: 600 }}>Assigned Subjects Performance</h4><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Subject</th><th>Avg Score</th><th>Status</th></tr></thead><tbody>{subStats.length > 0 ? subStats.map((s, i) => (<tr key={i}><td style={{ fontWeight: 500 }}>{s.name}</td><td>{s.avg || '-'}</td><td><span style={{ color: s.avg >= 35 ? '#16a34a' : s.avg >= 20 ? '#ca8a04' : '#dc2626', fontWeight: 600 }}>{s.avg >= 35 ? 'Good' : s.avg >= 20 ? 'Average' : 'Need Improvement'}</span></td></tr>)) : (<tr><td colSpan="3" style={{ textAlign: 'center', color: '#94a3b8' }}>No subjects found</td></tr>)}</tbody></table></div></div></>);
-                })()}</div></div></div>)}{messagingFaculty && (<div className={styles.modalOverlay} onClick={() => setMessagingFaculty(null)}><div className={styles.modalContent} style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}><div className={styles.modalHeader}><h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Mail size={20} /> Message {messagingFaculty.username}</h3><button className={styles.closeBtn} onClick={() => setMessagingFaculty(null)}><X size={24} /></button></div><div className={styles.modalBody}><div className={styles.formGroup}><label>Message Content</label><textarea value={messageText} onChange={(e) => setMessageText(e.target.value)} placeholder="Type your message here..." className={styles.input} style={{ minHeight: '120px', resize: 'vertical' }} autoFocus></textarea></div><div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}><button className={styles.secondaryBtn} onClick={() => setMessagingFaculty(null)}>Cancel</button><button className={styles.primaryBtn} onClick={sendMessage} disabled={!messageText.trim()} style={{ opacity: !messageText.trim() ? 0.6 : 1 }}>Send Message</button></div></div></div></div>)}</div>)}
-            {activeTab === 'approvals' && (<div className={styles.approvalsContainer}><div className={styles.infoBanner}><CheckCircle size={20} /><p>You have <strong>{pendingApprovals.length}</strong> IA Bundles pending for final approval.</p></div>{approvalLoading ? (<div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>Loading pending submissions...</div>) : pendingApprovals.length === 0 ? (<div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}><CheckCircle size={48} style={{ marginBottom: '1rem', color: '#10b981' }} /><p>No pending submissions. All marks have been reviewed!</p></div>) : (pendingApprovals.map((approval, idx) => (<div key={idx} className={styles.approvalCard}><div className={styles.approvalHeader}><div><h4>{approval.subjectName}</h4><span>{approval.iaType} Marks | Faculty: {approval.facultyName} | {approval.studentCount} students</span></div><div className={styles.approvlActions}><button className={styles.rejectBtn} onClick={() => handleRejectMarks(approval.subjectId, approval.iaType)}>Reject</button><button className={styles.approveBtn} onClick={() => handleApproveMarks(approval.subjectId, approval.iaType)}>Approve & Lock</button></div></div><table className={styles.miniTable}><thead><tr><th>Reg No</th><th>Student</th><th>Marks</th><th>Att (%)</th></tr></thead><tbody>{(Array.isArray(approval.marks) ? (expandedApprovals[idx] ? approval.marks : approval.marks.slice(0, 3)) : []).map(st => (<tr key={st.studentId}><td>{st.regNo}</td><td>{st.studentName}</td><td>{st.totalScore}/50</td><td style={{ color: st.attendancePercentage != null ? '#15803d' : '#94a3b8', fontWeight: 500 }}>{st.attendancePercentage != null ? `${st.attendancePercentage}%` : '-'}</td></tr>))}{Array.isArray(approval.marks) && approval.marks.length > 3 && (<tr onClick={() => toggleExpansion(idx)} style={{ cursor: 'pointer', background: '#f8fafc' }}><td colSpan="3" style={{ textAlign: 'center', color: '#2563eb', fontWeight: 500 }}>{expandedApprovals[idx] ? 'Show Less' : `+ ${approval.marks.length - 3} more records (Click to expand)`}</td></tr>)}</tbody></table></div>)))}<div className={styles.card} style={{ marginTop: '1.5rem' }}><div className={styles.cardHeader}><h3>🔓 Unlock Approved Marks</h3><p style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '0.5rem' }}>Unlock approved marks to allow faculty to make corrections</p></div><div style={{ padding: '1.5rem' }}><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '1rem', alignItems: 'end' }}><div><label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>Subject</label><select className={styles.select} id="unlockSubject" style={{ width: '100%', padding: '0.6rem' }}><option value="">Select Subject</option>{subjects.filter(s => s.name !== 'IC').map(subject => (<option key={subject.id} value={subject.id}>{subject.name}</option>))}</select></div><div><label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 500 }}>CIE Type</label><select className={styles.select} id="unlockCIE" style={{ width: '100%', padding: '0.6rem' }}><option value="CIE1">CIE-1</option><option value="CIE2">CIE-2</option><option value="CIE3">CIE-3</option><option value="CIE4">CIE-4</option><option value="CIE5">CIE-5</option></select></div><button className={styles.dangerBtn} onClick={() => { const subjectId = document.getElementById('unlockSubject').value; const cieType = document.getElementById('unlockCIE').value; if (!subjectId) { alert('Please select a subject'); return; } const subject = subjects.find(s => s.id === parseInt(subjectId)); handleUnlockMarks(subjectId, cieType, subject?.name || 'Selected Subject'); }} style={{ padding: '0.6rem 1.5rem' }}>Unlock Marks</button></div><div style={{ marginTop: '1rem', padding: '1rem', background: '#fef3c7', borderRadius: '0.5rem', fontSize: '0.85rem' }}><strong>⚠️ Warning:</strong> Unlocking marks will change their status from APPROVED to PENDING, allowing faculty to edit them again.</div></div></div></div>)}
+                return (<><div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}><div className={styles.statCard} style={{ background: '#f8fafc', border: 'none' }}><div className={`${styles.iconBox} ${styles.blue}`}><TrendingUp size={20} /></div><div><p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Avg Class Score</p><h3 style={{ margin: 0, fontSize: '1.25rem' }}>{overall > 0 ? overall : '-'}/50</h3></div></div><div className={styles.statCard} style={{ background: '#f8fafc', border: 'none' }}><div className={`${styles.iconBox} ${styles.green}`}><CheckCircle size={20} /></div><div><p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Students Evaluated</p><h3 style={{ margin: 0, fontSize: '1.25rem' }}>{evaluatedCount}</h3></div></div></div><div><h4 style={{ marginBottom: '1rem', fontWeight: 600 }}>Assigned Subjects Performance</h4><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Subject</th><th>Avg Score</th><th>Status</th></tr></thead><tbody>{subStats.length > 0 ? subStats.map((s, i) => (<tr key={i}><td style={{ fontWeight: 500 }}>{s.name}</td><td>{s.avg || '-'}</td><td><span style={{ color: s.avg >= 35 ? '#16a34a' : s.avg >= 20 ? '#ca8a04' : '#dc2626', fontWeight: 600 }}>{s.avg >= 35 ? 'Good' : s.avg >= 20 ? 'Average' : 'Need Improvement'}</span></td></tr>)) : (<tr><td colSpan="3" style={{ textAlign: 'center', color: '#94a3b8' }}>No subjects found</td></tr>)}</tbody></table></div></div></>);
+            })()}</div></div></div>)}
+            {messagingFaculty && (
+                <div className={styles.modalOverlay} onClick={() => setMessagingFaculty(null)}>
+                    <div className={styles.modalContent} style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+                        <div className={styles.modalHeader}>
+                            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Mail size={20} /> Message {messagingFaculty.username}</h3>
+                            <button className={styles.closeBtn} onClick={() => setMessagingFaculty(null)}><X size={24} /></button>
+                        </div>
+                        <div className={styles.modalBody}>
+                            <div className={styles.formGroup}>
+                                <label>Message Content</label>
+                                <textarea value={messageText} onChange={(e) => setMessageText(e.target.value)} placeholder="Type your message here..." className={styles.input} style={{ minHeight: '120px', resize: 'vertical' }} autoFocus></textarea>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                                <button className={styles.secondaryBtn} onClick={() => setMessagingFaculty(null)}>Cancel</button>
+                                <button className={styles.primaryBtn} onClick={sendMessage} disabled={!messageText.trim()} style={{ opacity: !messageText.trim() ? 0.6 : 1 }}>Send Message</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {activeTab === 'approvals' && (
+                <div className={styles.approvalsContainer}>
+                    <div className={styles.infoBanner}>
+                        <CheckCircle size={20} />
+                        <p>You have <strong>{pendingApprovals.length}</strong> IA Bundles pending for final approval.</p>
+                    </div>
+                    {approvalLoading ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100%, 1fr))', gap: '1.5rem' }}>
+                            {[1, 2].map(i => (
+                                <div key={i} className={styles.approvalCard}>
+                                    <div className={styles.approvalHeader}>
+                                        <div style={{ flex: 1 }}>
+                                            <Skeleton width="200px" height="20px" style={{ marginBottom: '8px' }} />
+                                            <Skeleton width="300px" height="14px" />
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <Skeleton width="80px" height="36px" />
+                                            <Skeleton width="120px" height="36px" />
+                                        </div>
+                                    </div>
+                                    <div style={{ marginTop: '1rem' }}>
+                                        <Skeleton width="100%" height="150px" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : pendingApprovals.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                            <CheckCircle size={48} style={{ marginBottom: '1rem', color: '#10b981' }} />
+                            <p>No pending submissions. All marks have been reviewed!</p>
+                        </div>
+                    ) : (
+                        pendingApprovals.map((approval, idx) => (
+                            <div key={idx} className={styles.approvalCard}>
+                                <div className={styles.approvalHeader}>
+                                    <div>
+                                        <h4>{approval.subjectName}</h4>
+                                        <span>{approval.iaType} Marks | Faculty: {approval.facultyName} | {approval.studentCount} students</span>
+                                    </div>
+                                    <div className={styles.approvlActions}>
+                                        <button className={styles.rejectBtn} onClick={() => handleRejectMarks(approval.subjectId, approval.iaType)}>Reject</button>
+                                        <button className={styles.approveBtn} onClick={() => handleApproveMarks(approval.subjectId, approval.iaType)}>Approve & Lock</button>
+                                    </div>
+                                </div>
+                                <table className={styles.miniTable}>
+                                    <thead>
+                                        <tr>
+                                            <th>Reg No</th>
+                                            <th>Student</th>
+                                            <th>Marks</th>
+                                            <th>Att (%)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(Array.isArray(approval.marks) ? (expandedApprovals[idx] ? approval.marks : approval.marks.slice(0, 3)) : []).map(st => (
+                                            <tr key={st.studentId}>
+                                                <td>{st.regNo}</td>
+                                                <td>{st.studentName}</td>
+                                                <td>{st.totalScore}/50</td>
+                                                <td style={{ color: st.attendancePercentage != null ? '#15803d' : '#94a3b8', fontWeight: 500 }}>{st.attendancePercentage != null ? `${st.attendancePercentage}%` : '-'}</td>
+                                            </tr>
+                                        ))}
+                                        {Array.isArray(approval.marks) && approval.marks.length > 3 && (
+                                            <tr onClick={() => toggleExpansion(idx)} style={{ cursor: 'pointer', background: '#f8fafc' }}>
+                                                <td colSpan="3" style={{ textAlign: 'center', color: '#2563eb', fontWeight: 500 }}>
+                                                    {expandedApprovals[idx] ? 'Show Less' : `+ ${approval.marks.length - 3} more records (Click to expand)`}
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ))
+                    )}
+                    {/* Unlock Requests Section */}
+                    {unlockRequests.length > 0 && (
+                        <>
+                            <div className={styles.infoBanner} style={{ marginTop: '2rem', background: '#fffbeb', color: '#b45309', borderLeftColor: '#f59e0b' }}>
+                                <Unlock size={20} />
+                                <p>You have <strong>{unlockRequests.length}</strong> pending <strong>Unlock Requests</strong> from Faculty.</p>
+                            </div>
+                            {unlockRequestsLoading ? (
+                                <div style={{ textAlign: 'center', padding: '2rem' }}><Skeleton width="100%" height="80px" /></div>
+                            ) : (
+                                unlockRequests.map((req) => (
+                                    <div key={req.id} className={styles.approvalCard} style={{ background: '#fff8f1', border: '1px solid #fed7aa', marginTop: '1rem' }}>
+                                        <div className={styles.approvalHeader}>
+                                            <div>
+                                                <h4>{req.subject?.name}</h4>
+                                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '4px' }}>
+                                                    <span style={{ background: '#fed7aa', color: '#9a3412', padding: '2px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 600 }}>CIE Types: {req.cieTypes}</span>
+                                                    <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Faculty: {req.faculty?.fullName || req.faculty?.username}</span>
+                                                </div>
+                                            </div>
+                                            <div className={styles.approvlActions}>
+                                                <button className={styles.rejectBtn} onClick={() => handleRejectUnlockRequest(req.id)}>Reject</button>
+                                                <button className={styles.approveBtn} style={{ background: '#f59e0b', color: 'white' }} onClick={() => handleApproveUnlockRequest(req.id)}>Approve Unlock</button>
+                                            </div>
+                                        </div>
+                                        <div style={{ marginTop: '1rem', background: 'white', padding: '1rem', borderRadius: '8px', border: '1px dashed #fdba74' }}>
+                                            <h5 style={{ margin: '0 0 0.5rem 0', color: '#9a3412', fontSize: '0.9rem' }}>Reason for Unlock:</h5>
+                                            <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem', fontStyle: 'italic' }}>"{req.reason}"</p>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </>
+                    )}
+
+                    <div className={styles.card} style={{ marginTop: '2.5rem', border: '1px solid #fee2e2', boxShadow: '0 4px 15px rgba(239, 68, 68, 0.05)', overflow: 'visible' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid #f1f5f9', paddingBottom: '1.25rem', marginBottom: '1.5rem' }}>
+                            <div>
+                                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#b91c1c', margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>
+                                    <div style={{ padding: '8px', background: '#fef2f2', borderRadius: '8px', display: 'flex', border: '1px solid #fecaca' }}>
+                                        <LockOpen size={18} color="#b91c1c" />
+                                    </div>
+                                    Unlock Approved Marks
+                                </h3>
+                                <p style={{ margin: '0.5rem 0 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                                    Revert approved marks to pending status to allow faculty modifications
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 1fr) minmax(150px, 1fr) auto', gap: '1.5rem', alignItems: 'flex-end' }}>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.6rem', fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>Select Subject</label>
+                                    <select className={styles.select} id="unlockSubject" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: 'white', fontSize: '0.9rem', color: '#1e293b' }}>
+                                        <option value="">-- Choose Subject --</option>
+                                        {subjects.filter(s => s.name !== 'IC').map(subject => (
+                                            <option key={subject.id} value={subject.id}>{subject.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '0.6rem', fontSize: '0.85rem', fontWeight: 600, color: '#475569' }}>CIE Type</label>
+                                    <select className={styles.select} id="unlockCIE" style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: 'white', fontSize: '0.9rem', color: '#1e293b' }}>
+                                        <option value="CIE1">CIE-1</option>
+                                        <option value="CIE2">CIE-2</option>
+                                        <option value="CIE3">CIE-3</option>
+                                        <option value="CIE4">CIE-4</option>
+                                        <option value="CIE5">CIE-5</option>
+                                    </select>
+                                </div>
+                                <button
+                                    onClick={() => { const subjectId = document.getElementById('unlockSubject').value; const cieType = document.getElementById('unlockCIE').value; if (!subjectId) { showToast('Please select a subject', 'error'); return; } const subject = subjects.find(s => s.id === parseInt(subjectId)); handleUnlockMarks(subjectId, cieType, subject?.name || 'Selected Subject'); }}
+                                    style={{
+                                        padding: '0.75rem 1.5rem', background: '#ef4444', color: 'white', border: 'none',
+                                        borderRadius: '8px', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem',
+                                        transition: 'all 0.2s', boxShadow: '0 4px 6px -1px rgba(239, 68, 68, 0.2)'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = '#dc2626'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = '#ef4444'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                                >
+                                    <Unlock size={16} />
+                                    Unlock Marks
+                                </button>
+                            </div>
+
+                            <div style={{ marginTop: '1.5rem', padding: '1rem', background: '#fffbeb', border: '1px solid #fef08a', borderRadius: '8px', display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                                <AlertTriangle size={18} color="#d97706" style={{ flexShrink: 0, marginTop: '2px' }} />
+                                <div>
+                                    <p style={{ margin: 0, color: '#92400e', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                                        <strong style={{ color: '#b45309' }}>Warning:</strong> Unlocking marks will immediately change their status from <span style={{ background: '#dcfce7', color: '#166534', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>APPROVED</span> to <span style={{ background: '#fef9c3', color: '#854d0e', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600 }}>PENDING</span>, allowing the assigned faculty to edit them.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
             {activeTab === 'analytics' && (<div className={styles.analyticsContainer}><div className={styles.gridTwo}><div className={styles.card}><h3>IA Submission Status</h3><div className={styles.doughnutContainer}><Pie data={iaSubmissionStatus} options={doughnutOptions} /></div></div><div className={styles.card}><h3>Year-on-Year Improvement</h3><div className={styles.chartContainer}><Line data={hodTrendData} options={commonOptions} /></div></div></div><div className={styles.card} style={{ marginTop: '1.5rem' }}><h3>Download Reports</h3><div className={styles.downloadOptions}><button className={styles.downloadBtn}><FileText size={16} /> Department IA Report (PDF)</button><button className={styles.downloadBtn}><FileText size={16} /> Consolidated Marks Sheet (Excel)</button><button className={styles.downloadBtn}><FileText size={16} /> Low Performers List (CSV)</button></div></div></div>)}
             {activeTab === 'lesson-plans' && (<div className={styles.lessonPlansContainer}><div className={styles.card}><div className={styles.cardHeader}><h3>Department Syllabus Progress</h3></div><div className={styles.gridContainer} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(350px,1fr))', gap: '1.5rem', marginTop: '1rem' }}>{subjectsByDept[selectedDept]?.map((subName, idx) => { const subId = idx + 1; const realSub = subjects.find(s => s.name === subName); const idToUse = realSub ? realSub.id : subId; const savedTracker = localStorage.getItem('syllabusTracker'); const progress = savedTracker ? (JSON.parse(savedTracker)[idToUse] || {}) : {}; const savedStructure = localStorage.getItem('syllabusStructure'); const structure = savedStructure ? (JSON.parse(savedStructure)[idToUse] || []) : []; const savedCie = localStorage.getItem('cieSelector'); const cieSelector = savedCie ? (JSON.parse(savedCie)[idToUse] || {}) : {}; const units = structure.length > 0 ? structure : [{ id: 'u1', name: 'Unit 1: Introduction' }, { id: 'u2', name: 'Unit 2: Core Concepts' }, { id: 'u3', name: 'Unit 3: Advanced Topics' }, { id: 'u4', name: 'Unit 4: Application' }, { id: 'u5', name: 'Unit 5: Case Studies' }]; const completedCount = units.filter(u => progress[u.id]).length; const totalUnits = units.length; const percent = totalUnits > 0 ? Math.round((completedCount / totalUnits) * 100) : 0; return (<div key={idx} style={{ border: '1px solid #e5e7eb', borderRadius: '8px', padding: '1.5rem' }}><div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}><div><h4 style={{ margin: '0 0 0.25rem', fontSize: '1.1rem', color: '#111827' }}>{subName}</h4><span style={{ fontSize: '0.85rem', color: '#6b7280' }}>Faculty: {facultyWorkload[idx % facultyWorkload.length]?.name || 'Unknown'}</span></div><div style={{ textAlign: 'right' }}><span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: percent === 100 ? '#10b981' : '#3b82f6' }}>{percent}%</span></div></div><div style={{ height: '8px', background: '#f3f4f6', borderRadius: '4px', overflow: 'hidden', marginBottom: '1rem' }}><div style={{ width: `${percent}%`, height: '100%', background: percent === 100 ? '#10b981' : '#3b82f6', transition: 'width 0.5s ease' }}></div></div><div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>{units.slice(0, 3).map(u => (<div key={u.id} style={{ display: 'flex', alignItems: 'center', fontSize: '0.9rem', color: progress[u.id] ? '#374151' : '#9ca3af' }}><div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '2px solid', borderColor: progress[u.id] ? '#10b981' : '#d1d5db', background: progress[u.id] ? '#10b981' : 'transparent', marginRight: '8px', display: 'grid', placeItems: 'center', flexShrink: 0 }}>{progress[u.id] && <CheckCircle size={10} color="white" />}</div><span style={{ textDecoration: progress[u.id] ? 'line-through' : 'none', marginRight: '8px' }}>{u.name}</span>{cieSelector[u.id] && (<span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#7c3aed', backgroundColor: '#f5f3ff', padding: '1px 6px', borderRadius: '4px', border: '1px solid #7c3aed', marginLeft: 'auto' }}>CIE</span>)}</div>))}{units.length > 3 && (<div style={{ fontSize: '0.8rem', color: '#6b7280', paddingLeft: '24px' }}>+ {units.length - 3} more topics</div>)}</div></div>); })}</div></div></div>)}
             {activeTab === 'syllabus' && (<div className={styles.sectionContainer}>
@@ -2388,7 +3200,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                 const name = document.getElementById('newSubjectName').value.trim();
                                 const code = document.getElementById('newSubjectCode').value.trim();
                                 const semester = document.getElementById('newSubjectSemester').value;
-                                if (!name || !code) { alert('Subject name and code are required.'); return; }
+                                if (!name || !code) { showToast('Subject name and code are required.', 'error'); return; }
                                 try {
                                     const token = user?.token;
                                     const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
@@ -2397,26 +3209,26 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                     const url = editingSubject ? `${API_BASE_URL}/subjects/${editingSubject.id}` : `${API_BASE_URL}/subjects`;
                                     const method = editingSubject ? 'PUT' : 'POST';
 
-                                    const res = await fetch(url, {
-                                        method, headers,
+                                    const res = await authenticatedFetch(url, {
+                                        method,
                                         body: JSON.stringify(payload)
                                     });
 
                                     if (res.ok) {
-                                        alert(editingSubject ? 'Subject updated successfully!' : 'Subject added successfully!');
+                                        showToast(editingSubject ? 'Subject updated successfully!' : 'Subject added successfully!');
                                         if (!editingSubject) {
                                             document.getElementById('newSubjectName').value = '';
                                             document.getElementById('newSubjectCode').value = '';
                                         }
                                         setEditingSubject(null);
                                         // Refresh subjects list
-                                        const subRes = await fetch(`${API_BASE_URL}/subjects/department/${selectedDept}`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+                                        const subRes = await authenticatedFetch(`${API_BASE_URL}/subjects/department/${selectedDept}`);
                                         if (subRes.ok) setSubjects(await subRes.json());
                                     } else {
                                         const err = await res.json();
-                                        alert(err.message || `Failed to ${editingSubject ? 'update' : 'add'} subject.`);
+                                        showToast(err.message || `Failed to ${editingSubject ? 'update' : 'add'} subject.`, 'error');
                                     }
-                                } catch (e) { console.error(e); alert(`Error ${editingSubject ? 'updating' : 'adding'} subject.`); }
+                                } catch (e) { console.error(e); showToast(`Error ${editingSubject ? 'updating' : 'adding'} subject.`, 'error'); }
                             }}><Layers size={16} /> {editingSubject ? 'Update Subject' : 'Add Subject'}</button>
                         </div>
                     </div>
@@ -2440,16 +3252,21 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                                     window.scrollTo({ top: 0, behavior: 'smooth' });
                                                 }}><Edit size={14} /></button>
                                                 <button className={styles.iconBtn} style={{ color: '#dc2626', background: '#fee2e2' }} title="Delete" onClick={async () => {
-                                                    if (!window.confirm(`Delete subject "${sub.name}"? This cannot be undone.`)) return;
+                                                    const confirmed = await showConfirm({
+                                                        title: 'Delete Subject',
+                                                        message: `Delete subject "${sub.name}"? This cannot be undone.`,
+                                                        variant: 'danger',
+                                                        confirmText: 'Delete'
+                                                    });
+                                                    if (!confirmed) return;
                                                     try {
-                                                        const token = user?.token;
-                                                        const res = await fetch(`${API_BASE_URL}/subjects/${sub.id}`, { method: 'DELETE', headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+                                                        const res = await authenticatedFetch(`${API_BASE_URL}/subjects/${sub.id}`, { method: 'DELETE' });
                                                         if (res.ok) {
                                                             setSubjects(prev => prev.filter(s => s.id !== sub.id));
                                                             if (editingSubject?.id === sub.id) setEditingSubject(null);
-                                                            alert('Subject deleted.');
-                                                        } else { alert('Failed to delete subject.'); }
-                                                    } catch (e) { alert('Error deleting subject.'); }
+                                                            showToast('Subject deleted.');
+                                                        } else { showToast('Failed to delete subject.', 'error'); }
+                                                    } catch (e) { showToast('Error deleting subject.', 'error'); }
                                                 }}><Trash2 size={14} /></button>
                                             </div>
                                         </td>
@@ -2695,11 +3512,10 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
     // ========== FACULTY ASSIGNMENT REQUESTS ==========
     const fetchPendingAssignments = async () => {
-        if (!selectedDept || !user?.token) return;
+        if (!selectedDept) return;
         setAssignReqLoading(true);
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}` };
-            const res = await fetch(`${API_BASE_URL}/hod/assignment-requests?department=${encodeURIComponent(selectedDept)}&status=ALL`, { headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/hod/assignment-requests?department=${encodeURIComponent(selectedDept)}&status=ALL`);
             if (res.ok) {
                 const data = await res.json();
                 setPendingAssignments(data);
@@ -2708,11 +3524,22 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         setAssignReqLoading(false);
     };
 
+    useEffect(() => {
+        if (selectedDept && user?.token) {
+            fetchPendingAssignments();
+        }
+    }, [selectedDept, user?.token]);
+
     const handleApproveRequest = async (requestId) => {
-        if (!window.confirm('Are you sure you want to approve this assignment request?')) return;
+        const confirmed = await showConfirm({
+            title: 'Approve Assignment',
+            message: 'Are you sure you want to approve this assignment request?',
+            variant: 'info',
+            confirmText: 'Approve'
+        });
+        if (!confirmed) return;
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}`, 'Content-Type': 'application/json' };
-            const res = await fetch(`${API_BASE_URL}/hod/assignment-requests/${requestId}/approve`, { method: 'PUT', headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/hod/assignment-requests/${requestId}/approve`, { method: 'PUT' });
             let data;
             const contentType = res.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
@@ -2722,23 +3549,27 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                 data = { message: text || `Server returned status ${res.status}` };
             }
             if (res.ok) {
-                alert(data.message || 'Request approved!');
+                showToast(data.message || 'Request approved!');
                 fetchPendingAssignments();
-                // Refresh faculty list too
-                const facRes = await fetch(`${API_BASE_URL}/hod/faculty?department=${selectedDept}`, { headers });
+                const facRes = await authenticatedFetch(`${API_BASE_URL}/hod/faculty?department=${selectedDept}`);
                 if (facRes.ok) setFacultyList(await facRes.json());
             } else {
                 console.error('Approve request failed:', res.status, data);
-                alert(data.message || `Failed to approve (${res.status})`);
+                showToast(data.message || `Failed to approve (${res.status})`, 'error');
             }
-        } catch (e) { console.error('Error approving request:', e); alert('Error approving request: ' + e.message); }
+        } catch (e) { console.error('Error approving request:', e); showToast('Error approving request: ' + e.message, 'error'); }
     };
 
     const handleRejectRequest = async (requestId) => {
-        if (!window.confirm('Are you sure you want to reject this assignment request?')) return;
+        const confirmed = await showConfirm({
+            title: 'Reject Assignment',
+            message: 'Are you sure you want to reject this assignment request?',
+            variant: 'danger',
+            confirmText: 'Reject'
+        });
+        if (!confirmed) return;
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}`, 'Content-Type': 'application/json' };
-            const res = await fetch(`${API_BASE_URL}/hod/assignment-requests/${requestId}/reject`, { method: 'PUT', headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/hod/assignment-requests/${requestId}/reject`, { method: 'PUT' });
             let data;
             const contentType = res.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
@@ -2748,23 +3579,64 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                 data = { message: text || `Server returned status ${res.status}` };
             }
             if (res.ok) {
-                alert(data.message || 'Request rejected');
+                showToast(data.message || 'Request rejected');
                 fetchPendingAssignments();
             } else {
                 console.error('Reject request failed:', res.status, data);
-                alert(data.message || `Failed to reject (${res.status})`);
+                showToast(data.message || `Failed to reject (${res.status})`, 'error');
             }
-        } catch (e) { console.error('Error rejecting request:', e); alert('Error rejecting request: ' + e.message); }
+        } catch (e) { console.error('Error rejecting request:', e); showToast('Error rejecting request: ' + e.message, 'error'); }
+    };
+
+    const handleClearHistory = async () => {
+        const confirmed = await showConfirm({
+            title: 'Clear Request History',
+            message: 'Are you sure you want to clear all approved and rejected requests from the history?',
+            variant: 'danger',
+            confirmText: 'Clear History'
+        });
+        if (!confirmed) return;
+        try {
+            const res = await authenticatedFetch(`${API_BASE_URL}/hod/assignment-requests/clear?department=${encodeURIComponent(selectedDept)}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            if (res.ok) {
+                showToast(data.message || 'History cleared limit successfully');
+                fetchPendingAssignments();
+            } else {
+                showToast(data.message || 'Failed to clear history', 'error');
+            }
+        } catch (e) {
+            console.error('Error clearing history:', e);
+            showToast('Network error while clearing history', 'error');
+        }
     };
 
     const renderFacultyRequests = () => {
-        if (pendingAssignments.length === 0 && !assignReqLoading) fetchPendingAssignments();
-
         const statusColors = { PENDING: '#f59e0b', APPROVED: '#10b981', REJECTED: '#ef4444' };
         const statusBg = { PENDING: '#fef3c7', APPROVED: '#d1fae5', REJECTED: '#fef2f2' };
 
         const pending = pendingAssignments.filter(r => r.status === 'PENDING');
         const processed = pendingAssignments.filter(r => r.status !== 'PENDING');
+
+        // Helper to get up-to-date subject names
+        const getLatestSubjectNames = (subjectString) => {
+            if (!subjectString) return '-';
+            return subjectString.split(',').map(sub => {
+                const subName = sub.trim();
+                // Try to find if there's an exact match in the subjects array first
+                const currentSub = subjects.find(s => s.name.toLowerCase() === subName.toLowerCase());
+                if (currentSub) return currentSub.name;
+
+                // If the stored subject string holds an ID instead of a name, try mapping it
+                const byId = subjects.find(s => s.id.toString() === subName);
+                if (byId) return byId.name;
+
+                // Fallback to the original string if no match found
+                return subName;
+            }).join(', ');
+        };
 
         return (
             <div className={styles.facultyContainer}>
@@ -2782,7 +3654,34 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                     </div>
 
                     {/* Pending Requests */}
-                    {pending.length > 0 ? (
+                    {/* Pending Requests */}
+                    {assignReqLoading ? (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
+                            {[1, 2, 3].map(i => (
+                                <div key={i} style={{ border: '2px solid #f1f5f9', borderRadius: '12px', padding: '1.25rem', background: '#f8fafc' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                        <div>
+                                            <Skeleton width="140px" height="18px" style={{ marginBottom: '6px' }} />
+                                            <Skeleton width="100px" height="14px" />
+                                        </div>
+                                        <Skeleton width="70px" height="24px" />
+                                    </div>
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <Skeleton width="100px" height="14px" style={{ marginBottom: '8px' }} />
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <Skeleton width="80px" height="24px" />
+                                            <Skeleton width="80px" height="24px" />
+                                        </div>
+                                    </div>
+                                    <Skeleton width="120px" height="14px" style={{ marginBottom: '1.5rem' }} />
+                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                        <Skeleton width="100%" height="36px" />
+                                        <Skeleton width="100%" height="36px" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : pending.length > 0 ? (
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1rem', marginTop: '1rem' }}>
                             {pending.map(req => (
                                 <div key={req.id} style={{ border: '2px solid #fde68a', borderRadius: '12px', padding: '1.25rem', background: '#fffbeb' }}>
@@ -2798,7 +3697,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                     <div style={{ marginBottom: '0.75rem' }}>
                                         <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Requested Subjects</span>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.3rem' }}>
-                                            {req.subjects.split(',').map((sub, i) => (
+                                            {getLatestSubjectNames(req.subjects).split(',').map((sub, i) => (
                                                 <span key={i} style={{ fontSize: '0.8rem', background: '#fff', padding: '3px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', color: '#475569' }}>
                                                     {sub.trim()}
                                                 </span>
@@ -2843,8 +3742,16 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                 {/* Processed Requests History */}
                 {processed.length > 0 && (
                     <div className={styles.card} style={{ marginTop: '1.5rem' }}>
-                        <div className={styles.cardHeader}>
-                            <h3>Request History</h3>
+                        <div className={styles.cardHeader} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <h3 style={{ margin: 0 }}>Request History</h3>
+                            <button
+                                className={styles.secondaryBtn}
+                                onClick={handleClearHistory}
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#dc2626', borderColor: '#fca5a5', background: '#fef2f2', padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+                                title="Clear all processed requests"
+                            >
+                                <Trash2 size={14} /> Clear History
+                            </button>
                         </div>
                         <table className={styles.table} style={{ width: '100%' }}>
                             <thead>
@@ -2860,7 +3767,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                 {processed.map(req => (
                                     <tr key={req.id}>
                                         <td style={{ fontWeight: 500 }}>{req.facultyName}</td>
-                                        <td style={{ fontSize: '0.9rem' }}>{req.subjects}</td>
+                                        <td style={{ fontSize: '0.9rem' }}>{getLatestSubjectNames(req.subjects)}</td>
                                         <td>{req.sections || '-'}</td>
                                         <td>
                                             <span style={{
@@ -2913,6 +3820,19 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                 {renderStudentProfileModal()}
                 {renderResetPasswordModal()}
                 {renderEditStudentModal()}
+                {renderStudentUploadModal()}
+                {hodToast.show && (
+                    <div style={{
+                        position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 10001,
+                        padding: '0.85rem 1.5rem', borderRadius: '12px',
+                        background: hodToast.type === 'error' ? '#fee2e2' : hodToast.type === 'info' ? '#dbeafe' : '#dcfce7',
+                        color: hodToast.type === 'error' ? '#991b1b' : hodToast.type === 'info' ? '#1e40af' : '#166534',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontWeight: 600, fontSize: '0.9rem',
+                        animation: 'dialogIn 0.25s ease-out', maxWidth: '400px'
+                    }}>
+                        {hodToast.message}
+                    </div>
+                )}
             </div>
         );
     }
@@ -2934,6 +3854,19 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
             {renderStudentProfileModal()}
             {renderResetPasswordModal()}
             {renderEditStudentModal()}
+            {renderStudentUploadModal()}
+            {hodToast.show && (
+                <div style={{
+                    position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 10001,
+                    padding: '0.85rem 1.5rem', borderRadius: '12px',
+                    background: hodToast.type === 'error' ? '#fee2e2' : hodToast.type === 'info' ? '#dbeafe' : '#dcfce7',
+                    color: hodToast.type === 'error' ? '#991b1b' : hodToast.type === 'info' ? '#1e40af' : '#166534',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontWeight: 600, fontSize: '0.9rem',
+                    animation: 'dialogIn 0.25s ease-out', maxWidth: '400px'
+                }}>
+                    {hodToast.message}
+                </div>
+            )}
         </DashboardLayout>
     );
 };

@@ -4,9 +4,9 @@ import { Doughnut, Line } from 'react-chartjs-2';
 import styles from '../../../pages/PrincipalDashboard.module.css';
 // import { collegeStats, principalStats, academicTrends } from '../../../utils/mockData'; // Removed static mock imports
 import {
-    PendingApprovalsWidget, FocusListWidget,
-    YearComparisonWidget, NotesWidget, FacultyPerformanceWidget, ScheduleWidget, ActionCenter, CIEStatsWidget, LowPerformersWidget
+    FocusListWidget, NotesWidget, CIEStatsWidget, LowPerformersWidget
 } from './Widgets';
+import Skeleton from '../../ui/Skeleton';
 
 // Premium Hero Card Component
 const HeroStatCard = ({ label, value, icon: Icon, color, trend, gradient, customContent, onClick }) => (
@@ -31,7 +31,7 @@ const HeroStatCard = ({ label, value, icon: Icon, color, trend, gradient, custom
     >
         <div style={{ position: 'absolute', top: '-10px', right: '-10px', width: '100px', height: '100px', borderRadius: '50%', background: color, opacity: 0.1, filter: 'blur(30px)' }}></div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', position: 'relative', zIndex: 1, height: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', position: 'relative', zIndex: 1, height: '100%', width: '100%' }}>
             {customContent ? (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
@@ -46,7 +46,7 @@ const HeroStatCard = ({ label, value, icon: Icon, color, trend, gradient, custom
                 </div>
             ) : (
                 <>
-                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%', width: '100%' }}>
                         <div style={{ background: 'white', padding: '10px', borderRadius: '14px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', width: 'fit-content' }}>
                             <Icon size={24} color={color} />
                         </div>
@@ -56,7 +56,7 @@ const HeroStatCard = ({ label, value, icon: Icon, color, trend, gradient, custom
                         </div>
                     </div>
                     {trend && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.5)', padding: '4px 8px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, color: '#16a34a' }}>
+                        <div style={{ position: 'absolute', top: 0, right: 0, display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.5)', padding: '4px 8px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 600, color: '#16a34a' }}>
                             <TrendingUp size={14} /> {trend}
                         </div>
                     )}
@@ -67,48 +67,60 @@ const HeroStatCard = ({ label, value, icon: Icon, color, trend, gradient, custom
 );
 
 const OverviewSection = memo(({
-    stats, chartData, branches, branchPerformance, lowPerformers,
-    facultyAnalytics, schedule, approvals, cieStats, trends, hodSubmissionStatus, onNavigate
+    stats, chartData, branches, branchPerformance, deptStudentCounts, deptCompletedCounts, lowPerformers,
+    facultyAnalytics, schedule, approvals, cieStats, trends, hodSubmissionStatus, onNavigate, loading
 }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', animation: 'fadeIn 0.6s ease-out' }}>
 
         {/* --- HERO STATS (FLOWCHART: OVERVIEW PANEL) --- */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
-            <HeroStatCard
-                label="Total Students"
-                value={stats?.totalStudents || 0}
-                icon={Users}
-                color="#3b82f6"
-                trend="+5%"
-                gradient="linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)"
-                onClick={() => onNavigate && onNavigate('directory')}
-            />
-            <HeroStatCard
-                label="Total Faculty"
-                value={stats?.totalFaculty || "Loading..."}
-                icon={Users}
-                color="#8b5cf6"
-                trend="Stable"
-                gradient="linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%)"
-                onClick={() => onNavigate && onNavigate('faculty')}
-            />
-            <HeroStatCard
-                label="Departments"
-                value={branches?.length || 0}
-                icon={BookOpen}
-                color="#f59e0b"
-                trend="Active"
-                gradient="linear-gradient(135deg, #fffbeb 0%, #ffffff 100%)"
-                onClick={() => onNavigate && onNavigate('departments')}
-            />
-            <HeroStatCard
-                label="CIE Status"
-                icon={Activity}
-                color="#10b981"
-                gradient="linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)"
-                customContent={<CIEStatsWidget {...cieStats} />}
-                onClick={() => onNavigate && onNavigate('compliance')}
-            />
+            {loading ? (
+                [1, 2, 3, 4].map(i => (
+                    <div key={i} style={{ background: 'white', borderRadius: '24px', padding: '1.5rem', height: '160px', border: '1px solid #e2e8f0' }}>
+                        <Skeleton width="44px" height="44px" variant="rectangle" style={{ borderRadius: '14px', marginBottom: '1rem' }} />
+                        <Skeleton width="100px" height="14px" style={{ marginBottom: '10px' }} />
+                        <Skeleton width="80px" height="32px" />
+                    </div>
+                ))
+            ) : (
+                <>
+                    <HeroStatCard
+                        label="Total Students"
+                        value={stats?.totalStudents || 0}
+                        icon={Users}
+                        color="#3b82f6"
+                        trend="+5%"
+                        gradient="linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)"
+                        onClick={() => onNavigate && onNavigate('directory')}
+                    />
+                    <HeroStatCard
+                        label="Total Faculty"
+                        value={stats?.totalFaculty || 0}
+                        icon={Users}
+                        color="#8b5cf6"
+                        trend="Stable"
+                        gradient="linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%)"
+                        onClick={() => onNavigate && onNavigate('faculty')}
+                    />
+                    <HeroStatCard
+                        label="Departments"
+                        value={branches?.length || 0}
+                        icon={BookOpen}
+                        color="#f59e0b"
+                        trend="Active"
+                        gradient="linear-gradient(135deg, #fffbeb 0%, #ffffff 100%)"
+                        onClick={() => onNavigate && onNavigate('departments')}
+                    />
+                    <HeroStatCard
+                        label="CIE Status"
+                        icon={Activity}
+                        color="#10b981"
+                        gradient="linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%)"
+                        customContent={<CIEStatsWidget {...cieStats} />}
+                        onClick={() => onNavigate && onNavigate('compliance')}
+                    />
+                </>
+            )}
         </div>
 
         {/* --- MAIN CONTENT GRID (Asymmetrical) --- */}
@@ -124,13 +136,20 @@ const OverviewSection = memo(({
                             <h3 style={{ margin: 0, fontSize: '1.4rem', color: '#1e293b', fontWeight: 700 }}>Department Performance</h3>
                             <p style={{ margin: '0.5rem 0 0 0', color: '#64748b' }}>Average CIE Scores Comparison</p>
                         </div>
-                        <button className={styles.secondaryBtn} onClick={() => alert('Viewing Full Analysis')}>
+                        <button className={styles.secondaryBtn} onClick={() => onNavigate && onNavigate('compliance')}>
                             View Details <ArrowUpRight size={16} />
                         </button>
                     </div>
 
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2.5rem', justifyContent: 'center', padding: '1rem 0' }}>
-                        {branches?.map((dept, index) => {
+                        {loading ? (
+                            [1, 2, 3, 4].map(i => (
+                                <div key={i} style={{ textAlign: 'center' }}>
+                                    <Skeleton width="130px" height="130px" variant="circle" />
+                                    <Skeleton width="60px" height="14px" style={{ margin: '1rem auto 0' }} />
+                                </div>
+                            ))
+                        ) : branches?.map((dept, index) => {
                             const score = branchPerformance?.[index] || 0;
                             const color = chartData?.datasets?.[0]?.backgroundColor?.[index] || '#cbd5e1';
                             const doughnutData = {
@@ -154,28 +173,24 @@ const OverviewSection = memo(({
                                             <span style={{ fontWeight: '800', fontSize: '1.6rem', color: '#1e293b', lineHeight: 1 }}>{score}%</span>
                                         </div>
                                     </div>
-                                    <span style={{ marginTop: '1rem', fontWeight: 600, fontSize: '0.9rem', color: '#64748b' }}>{dept}</span>
+                                    <div style={{ marginTop: '1rem', fontWeight: 600, fontSize: '0.9rem', color: '#64748b', textAlign: 'center', lineHeight: 1.2 }}>
+                                        {dept} <br/>
+                                        <span style={{fontSize: '0.75rem', fontWeight: 500}}>
+                                            ({deptCompletedCounts?.[dept] || 0}/{deptStudentCounts?.[dept] || 0} completed)
+                                        </span>
+                                    </div>
                                 </div>
                             );
                         })}
                     </div>
                 </div>
 
-                {/* Trend & Faculty Rows (FLOWCHART: FACULTY MONITORING) */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-                    <FacultyPerformanceWidget analytics={facultyAnalytics} />
-                    <ScheduleWidget schedule={schedule} />
-                </div>
-                <LowPerformersWidget data={lowPerformers} />
+                <LowPerformersWidget data={lowPerformers} loading={loading} />
             </div>
 
-            {/* RIGHT COLUMN (Action Center & Approvals) */}
+            {/* RIGHT COLUMN (Focus List) */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-                <ActionCenter />
-                {/* FLOWCHART: PENDING CIE APPROVALS */}
-                <PendingApprovalsWidget approvals={approvals} />
-                <FocusListWidget branches={branches} branchPerformance={branchPerformance} hodSubmissionStatus={hodSubmissionStatus} />
-                <YearComparisonWidget trends={trends} />
+                <FocusListWidget branches={branches} branchPerformance={branchPerformance} hodSubmissionStatus={hodSubmissionStatus} loading={loading} />
             </div>
         </div>
 

@@ -597,9 +597,19 @@
     .header {
         flex-direction: column;
         align-items: flex-start;
-        gap: 1.5rem;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
+        gap: 1rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .welcomeText {
+        font-size: 1.3rem;
+        word-break: break-word;
+        white-space: normal;
+    }
+
+    .subtitle {
+        font-size: 0.82rem;
     }
 
     .headerActions {
@@ -612,8 +622,7 @@
         margin-left: 0;
         width: 100%;
         order: 3;
-        /* Move search below buttons on mobile if needed */
-        margin-top: 1rem;
+        margin-top: 0.5rem;
     }
 
     .searchBarInput {
@@ -626,7 +635,6 @@
 
     .metricsGrid {
         grid-template-columns: 1fr;
-        /* Stack cards vertically */
         gap: 1rem;
     }
 
@@ -636,32 +644,83 @@
 
     .quickActionsGrid {
         grid-template-columns: repeat(2, 1fr);
-        /* 2x2 grid on mobile for actions */
         gap: 1rem;
     }
 
     .chartContainer {
         height: 300px;
-        /* Smaller charts */
     }
 
-    .table th,
+    /* Table fixes */
+    .table th {
+        white-space: nowrap;
+        padding: 0.6rem 0.5rem;
+        font-size: 0.78rem;
+    }
+
     .table td {
-        padding: 0.75rem 0.5rem;
+        padding: 0.6rem 0.5rem;
+        font-size: 0.82rem;
+    }
+
+    /* Force horizontal scroll for tables */
+    .tableCard {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding: 1rem;
+    }
+
+    .table {
+        min-width: 500px;
+    }
+
+    /* Card fixes */
+    .glassCard {
+        padding: 1rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .sectionTitle {
+        font-size: 1.05rem;
+        word-break: break-word;
+    }
+
+    /* Search input */
+    .searchInput {
+        width: 100%;
+    }
+
+    .searchInput:focus {
+        width: 100%;
+    }
+
+    .filterSelect {
+        min-width: 120px;
         font-size: 0.85rem;
     }
 
-    /* Force horizontal scroll for tables if needed */
-    .tableCard {
-        overflow-x: auto;
+    /* HOD management */
+    .hodBanner {
         padding: 1rem;
+        border-radius: 12px;
+    }
+
+    .formGrid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .searchResultDropdown {
+        width: calc(100vw - 2rem);
+        right: auto;
+        left: 0;
     }
 }
 
 @media (max-width: 480px) {
     .quickActionsGrid {
         grid-template-columns: 1fr;
-        /* Full width actions on very small screens */
     }
 
     .cardValue {
@@ -669,7 +728,16 @@
     }
 
     .glassCard {
+        padding: 0.85rem;
+    }
+
+    .header {
+        padding: 0.85rem;
+    }
+
+    .actionBtn {
         padding: 1rem;
+        font-size: 0.82rem;
     }
 }
 

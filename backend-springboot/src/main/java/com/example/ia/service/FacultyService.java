@@ -137,6 +137,13 @@ public class FacultyService {
             }
         }
 
+        // Sort by registration number so sections always appear in A→B→C order
+        result.sort((a, b) -> {
+            String regA = a.getRegNo() != null ? a.getRegNo() : "";
+            String regB = b.getRegNo() != null ? b.getRegNo() : "";
+            return regA.compareToIgnoreCase(regB);
+        });
+
         return result;
     }
 
@@ -246,5 +253,92 @@ public class FacultyService {
         double avg = scoredCount > 0 ? Math.round((totalScore / scoredCount / 50.0 * 100) * 10.0) / 10.0 : 0;
         return new FacultyClassAnalytics(evaluated, pending, avg, low, top, allowedStudents.size(), excellentList,
                 averageList, lowList);
+    }
+
+    public boolean isFacultyAssignedToSubjectAndStudent(String username, Long subjectId, Long studentId) {
+        User user = userRepository.findByUsername(username).orElse(null);
+        if (user == null)
+            return false;
+
+        // 1. Check if faculty teaches the subject
+        List<SubjectWithRoleDto> assignedSubjects = getSubjectsForFaculty(username);
+        boolean teachesSubject = assignedSubjects.stream().anyMatch(s -> s.getId().equals(subjectId));
+        if (!teachesSubject)
+            return false;
+
+        // 2. If studentId is provided, check if student is in an allowed section for this faculty
+        if (studentId != null) {
+            List<Student> allowedStudents = getStudentsForFaculty(username);
+            return allowedStudents.stream().anyMatch(s -> s.getId().equals(studentId));
+        }
+
+        return true;
+    }
+
+    /**
+     * Checks if any of the requested subjects and sections are already assigned to
+     * another faculty in the specified department.
+     * @return null if available, or an error message if already assigned.
+     */
+    public String validateSubjectSectionAvailability(String department, String subjectsStr, String sectionsStr, Long excludeFacultyId) {
+        if (department == null || department.isBlank() || subjectsStr == null || subjectsStr.isBlank()
+                || sectionsStr == null || sectionsStr.isBlank()) {
+            return null;
+        }
+
+        List<String> requestedSubjects = Arrays.stream(subjectsStr.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+        List<String> requestedSections = Arrays.stream(sectionsStr.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+
+        // 1. Check Home Department Faculties
+        List<User> homeFaculties = userRepository.findByRoleAndDepartment("FACULTY", department);
+        for (User faculty : homeFaculties) {
+            if (excludeFacultyId != null && excludeFacultyId.equals(faculty.getId())) {
+                continue;
+            }
+            if (faculty.getSubjects() == null || faculty.getSection() == null) continue;
+
+            List<String> facSubjects = Arrays.stream(faculty.getSubjects().split(","))
+                    .map(String::trim).collect(Collectors.toList());
+            List<String> facSections = Arrays.stream(faculty.getSection().split(","))
+                    .map(String::trim).collect(Collectors.toList());
+
+            for (String sub : requestedSubjects) {
+                if (facSubjects.contains(sub)) {
+                    for (String sec : requestedSections) {
+                        if (facSections.contains(sec)) {
+                            return "Subject '" + sub + "' for section '" + sec + "' is already assigned to faculty '" + faculty.getFullName() + "'";
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Check Approved Cross-Department Requests
+        List<FacultyAssignmentRequest> approvedReqs = assignmentRequestRepository.findByTargetDepartmentAndStatus(department, "APPROVED");
+        for (FacultyAssignmentRequest req : approvedReqs) {
+            if (excludeFacultyId != null && excludeFacultyId.equals(req.getFacultyId())) {
+                continue;
+            }
+            if (req.getSubjects() == null || req.getSections() == null) continue;
+
+            List<String> reqSubjects = Arrays.stream(req.getSubjects().split(","))
+                    .map(String::trim).collect(Collectors.toList());
+            List<String> reqSections = Arrays.stream(req.getSections().split(","))
+                    .map(String::trim).collect(Collectors.toList());
+
+            for (String sub : requestedSubjects) {
+                if (reqSubjects.contains(sub)) {
+                    for (String sec : requestedSections) {
+                        if (reqSections.contains(sec)) {
+                            return "Subject '" + sub + "' for section '" + sec + "' is already assigned to faculty '" + req.getFacultyName() + "'";
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 }

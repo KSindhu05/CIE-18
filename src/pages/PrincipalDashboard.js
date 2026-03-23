@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../components/GlobalDialogProvider';
+import API_BASE_URL from '../config/api';
+import authenticatedFetch from '../utils/authFetch';
 import styles from './PrincipalDashboard.module.css';
 import {
     LayoutDashboard, Users, ShieldCheck, Calendar, BarChart2,
@@ -28,11 +31,17 @@ import {
     fetchSemesterStatus, updateSemesterStatus, resetMarks, resetFaculty, cleanupData, shiftSemesters
 } from '../services/api';
 
-const API_BASE_URL = 'http://127.0.0.1:8084/api';
 
 const PrincipalDashboard = () => {
     const { user, logout } = useAuth();
-    const [activeTab, setActiveTab] = useState('overview');
+    const { showConfirm } = useDialog();
+    const [activeTab, setActiveTab] = useState(() => {
+        return sessionStorage.getItem('principalActiveTab') || 'overview';
+    });
+
+    useEffect(() => {
+        sessionStorage.setItem('principalActiveTab', activeTab);
+    }, [activeTab]);
 
     // Data States
     const [dashboardData, setDashboardData] = useState(null);
@@ -44,6 +53,9 @@ const PrincipalDashboard = () => {
 
     const [loading, setLoading] = useState(true);
     const [semesterStatus, setSemesterStatus] = useState('ACTIVE');
+    const [targetSemester, setTargetSemester] = useState('');
+    const [shiftFrom, setShiftFrom] = useState('');
+    const [shiftTo, setShiftTo] = useState('');
     const [resetLoading, setResetLoading] = useState(false);
 
     // Directory State
@@ -78,12 +90,12 @@ const PrincipalDashboard = () => {
                     reps,
                     semStatus
                 ] = await Promise.all([
-                    fetchPrincipalDashboard(token),
-                    fetchAllFaculty(token),
-                    fetchHods(token),
-                    fetchTimetables(token),
-                    fetchNotifications(token),
-                    fetchReports(token),
+                    fetchPrincipalDashboard(),
+                    fetchAllFaculty(),
+                    fetchHods(),
+                    fetchTimetables(),
+                    fetchNotifications(),
+                    fetchReports(),
                     fetchSemesterStatus()
                 ]);
 
@@ -127,9 +139,7 @@ const PrincipalDashboard = () => {
         try {
             const token = user?.token;
             const apiType = item.apiType || item.name.toLowerCase().replace(/ /g, '_');
-            const response = await fetch(`${API_BASE_URL}/principal/reports/download/${apiType}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await authenticatedFetch(`${API_BASE_URL}/principal/reports/download/${apiType}`);
 
             if (!response.ok) throw new Error('Failed to generate report');
 
@@ -160,7 +170,25 @@ const PrincipalDashboard = () => {
         { label: 'CIE Schedule', path: '#timetables', icon: <Calendar size={20} />, isActive: activeTab === 'timetables', onClick: () => setActiveTab('timetables') },
         { label: 'CIE Compliance', path: '#compliance', icon: <ShieldCheck size={20} />, isActive: activeTab === 'compliance', onClick: () => setActiveTab('compliance') },
         { label: 'Reports & Analytics', path: '#reports', icon: <FileText size={20} />, isActive: activeTab === 'reports', onClick: () => setActiveTab('reports') },
-        { label: 'Notifications', path: '#notifications', icon: <Bell size={20} />, isActive: activeTab === 'notifications', onClick: () => setActiveTab('notifications'), badge: notifications.filter(n => !n.isRead).length || null },
+        { 
+            label: 'Notifications', 
+            path: '#notifications', 
+            icon: <Bell size={20} />, 
+            isActive: activeTab === 'notifications', 
+            onClick: async () => {
+                setActiveTab('notifications');
+                // Mark all local notifications as read to clear badge immediately
+                setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+                try {
+                    await authenticatedFetch(`${API_BASE_URL}/notifications/read-all`, {
+                        method: 'POST'
+                    });
+                } catch (error) {
+                    console.error('Failed to mark notifications as read:', error);
+                }
+            }, 
+            badge: notifications.filter(n => !n.isRead).length || null 
+        },
         { label: 'Semester Reset', path: '#semester', icon: <Settings size={20} />, isActive: activeTab === 'semester-management', onClick: () => setActiveTab('semester-management') }
     ];
 
@@ -225,9 +253,8 @@ const PrincipalDashboard = () => {
     const handleSendNotification = useCallback(async () => {
         if (!msgText.trim()) return;
         try {
-            const res = await fetch(`${API_BASE_URL}/notifications/broadcast`, {
+            const res = await authenticatedFetch(`${API_BASE_URL}/notifications/broadcast`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     senderId: user?.username || 'principal',
                     message: msgText,
@@ -262,9 +289,8 @@ const PrincipalDashboard = () => {
     const handleClearNotifications = useCallback(async () => {
         try {
             const token = user?.token;
-            await fetch(`${API_BASE_URL}/notifications/clear`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            await authenticatedFetch(`${API_BASE_URL}/notifications/clear`, {
+                method: 'DELETE'
             });
             setNotifications([]);
             showToast('Notifications cleared', 'info');
@@ -277,9 +303,8 @@ const PrincipalDashboard = () => {
     const handleDeleteNotification = useCallback(async (id) => {
         try {
             const token = user?.token;
-            await fetch(`${API_BASE_URL}/notifications/${id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            await authenticatedFetch(`${API_BASE_URL}/notifications/${id}`, {
+                method: 'DELETE'
             });
             setNotifications(prev => prev.filter(n => n.id !== id));
         } catch (err) {
@@ -291,12 +316,12 @@ const PrincipalDashboard = () => {
     const handleCreateHod = useCallback(async (hodData) => {
         try {
             const token = user?.token;
-            const newHod = await createHod(token, hodData);
+            const newHod = await createHod(hodData);
             setHodList(prev => [...prev, newHod]);
             showToast('HOD Registered Successfully', 'success');
             // Re-fetch dashboard data so the new department appears immediately
             try {
-                const dashData = await fetchPrincipalDashboard(token);
+                const dashData = await fetchPrincipalDashboard();
                 if (dashData) setDashboardData(dashData);
             } catch (e) { /* silent — department will appear on next reload */ }
         } catch (error) {
@@ -307,7 +332,7 @@ const PrincipalDashboard = () => {
     const handleRefreshHods = useCallback(async () => {
         try {
             const token = user?.token;
-            const hods = await fetchHods(token);
+            const hods = await fetchHods();
             if (hods) {
                 setHodList(hods);
                 showToast('HOD List Updated', 'success');
@@ -320,7 +345,7 @@ const PrincipalDashboard = () => {
     const handleUpdateHod = useCallback(async (id, hodData) => {
         try {
             const token = user?.token;
-            const updated = await updateHod(token, id, hodData);
+            const updated = await updateHod(id, hodData);
             setHodList(prev => prev.map(h => h.id === id ? updated : h));
             showToast('HOD Updated Successfully', 'success');
         } catch (error) {
@@ -331,7 +356,7 @@ const PrincipalDashboard = () => {
     const handleDeleteHod = useCallback(async (id) => {
         try {
             const token = user?.token;
-            await deleteHod(token, id);
+            await deleteHod(id);
             setHodList(prev => prev.filter(h => h.id !== id));
             showToast('HOD Removed Successfully', 'success');
         } catch (error) {
@@ -354,9 +379,6 @@ const PrincipalDashboard = () => {
                     </div>
                     <div className={styles.headerActions}>
                         <StudentSentinel students={deptStudents} />
-                        <select className={styles.yearSelector}>
-                            <option>Academic Year 2025-26</option>
-                        </select>
                     </div>
                 </div>
             </header>
@@ -364,26 +386,34 @@ const PrincipalDashboard = () => {
             {/* Dynamic Content */}
             <div className={styles.sectionVisible}>
                 {activeTab === 'overview' && (
-                    loading ? <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Loading Dashboard...</div> :
-                        <OverviewSection
-                            stats={dashboardData?.stats}
-                            chartData={barData}
-                            branches={dashboardData?.branches}
-                            branchPerformance={dashboardData?.branchPerformance}
-                            lowPerformers={dashboardData?.lowPerformers}
-                            facultyAnalytics={dashboardData?.facultyAnalytics}
-                            schedule={dashboardData?.dates}
-                            approvals={dashboardData?.approvals}
-                            cieStats={dashboardData?.cieStats}
-                            trends={dashboardData?.trends}
-                            hodSubmissionStatus={dashboardData?.hodSubmissionStatus}
-                            onNavigate={setActiveTab}
-                        />
+                    <OverviewSection
+                        stats={dashboardData?.stats}
+                        chartData={barData}
+                        branches={dashboardData?.branches}
+                        branchPerformance={dashboardData?.branchPerformance}
+                        deptStudentCounts={dashboardData?.deptStudentCounts}
+                        deptCompletedCounts={dashboardData?.deptCompletedCounts}
+                        lowPerformers={dashboardData?.lowPerformers}
+                        facultyAnalytics={dashboardData?.facultyAnalytics}
+                        schedule={dashboardData?.dates}
+                        approvals={dashboardData?.approvals}
+                        cieStats={dashboardData?.cieStats}
+                        trends={dashboardData?.trends}
+                        hodSubmissionStatus={dashboardData?.hodSubmissionStatus}
+                        onNavigate={setActiveTab}
+                        loading={loading}
+                    />
                 )}
 
-                {activeTab === 'compliance' && <ComplianceSection hodSubmissionStatus={dashboardData?.hodSubmissionStatus} />}
+                {activeTab === 'compliance' && <ComplianceSection hodSubmissionStatus={dashboardData?.hodSubmissionStatus} loading={loading} />}
 
-                {activeTab === 'departments' && <DepartmentSection departments={departments} facultyList={facultyList} />}
+                {activeTab === 'departments' && (
+                    <DepartmentSection
+                        departments={departments}
+                        facultyList={facultyList}
+                        loading={loading}
+                    />
+                )}
 
                 {activeTab === 'directory' && <DirectorySection
                     departments={departments}
@@ -391,6 +421,7 @@ const PrincipalDashboard = () => {
                     deptStudents={deptStudents}
                     handleDeptClick={handleDeptClick}
                     setSelectedDept={setSelectedDept}
+                    loading={loading}
                 />}
 
                 {activeTab === 'hod-management' && (
@@ -402,12 +433,13 @@ const PrincipalDashboard = () => {
                         user={user}
                         departments={departments}
                         onRefresh={handleRefreshHods}
+                        loading={loading}
                     />
                 )}
 
-                {activeTab === 'faculty' && <FacultyDirectorySection facultyMembers={facultyList} onRemove={handleRemoveFaculty} />}
+                {activeTab === 'faculty' && <FacultyDirectorySection facultyMembers={facultyList} onRemove={handleRemoveFaculty} loading={loading} />}
 
-                {activeTab === 'timetables' && <CIEScheduleSection schedules={timetables} onDownload={handleDownload} />}
+                {activeTab === 'timetables' && <CIEScheduleSection schedules={timetables} onDownload={handleDownload} loading={loading} />}
                 {activeTab === 'notifications' && <NotificationsSection
                     notifications={notifications}
                     recipientType={msgRecipientType}
@@ -419,8 +451,10 @@ const PrincipalDashboard = () => {
                     onSend={handleSendNotification}
                     onClear={handleClearNotifications}
                     onDelete={handleDeleteNotification}
+                    loading={loading}
+                    departments={departments}
                 />}
-                {activeTab === 'reports' && <ReportsSection reports={reports} onDownload={handleDownload} departments={departments} />}
+                {activeTab === 'reports' && <ReportsSection reports={reports} onDownload={handleDownload} departments={departments} loading={loading} />}
 
                 {activeTab === 'semester-management' && (
                     <div style={{ animation: 'fadeIn 0.6s ease' }}>
@@ -454,7 +488,22 @@ const PrincipalDashboard = () => {
                                         ⚠️ All actions below are permanent and institution-wide. Proceed with caution.
                                     </p>
                                 </div>
-                                <div style={{ marginLeft: 'auto' }}>
+                                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                    <select
+                                        value={targetSemester}
+                                        onChange={(e) => setTargetSemester(e.target.value)}
+                                        style={{
+                                            padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #fca5a5',
+                                            background: '#fff', color: '#1e293b', fontWeight: 600, fontSize: '0.85rem',
+                                            cursor: 'pointer', outline: 'none'
+                                        }}
+                                    >
+                                        <option value="" disabled>Select Target Semester</option>
+                                        <option value="All">Target: All Semesters</option>
+                                        {[1, 2, 3, 4, 5, 6].map(sem => (
+                                            <option key={sem} value={sem}>Target: Semester {sem}</option>
+                                        ))}
+                                    </select>
                                     <span style={{
                                         background: semesterStatus === 'ACTIVE'
                                             ? 'linear-gradient(135deg, #065f46, #059669)'
@@ -511,7 +560,7 @@ const PrincipalDashboard = () => {
                                     onClick={async () => {
                                         const newStatus = semesterStatus === 'ACTIVE' ? 'COMPLETED' : 'ACTIVE';
                                         try {
-                                            await updateSemesterStatus(user?.token, newStatus);
+                                            await updateSemesterStatus(newStatus);
                                             setSemesterStatus(newStatus);
                                             showToast(`Semester marked as ${newStatus}`, 'success');
                                         } catch (e) { showToast('Failed to update status', 'error'); }
@@ -566,28 +615,34 @@ const PrincipalDashboard = () => {
                                 </div>
                                 <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem', fontWeight: 700, color: '#1e293b' }}>Clear Academic Marks</h3>
                                 <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-                                    Permanently wipe all CIE marks for every student across all departments. <strong style={{ color: '#dc2626' }}>Irreversible.</strong>
+                                    Permanently wipe CIE marks for {targetSemester === 'All' ? 'every student across all departments' : `students in Semester ${targetSemester}`}. <strong style={{ color: '#dc2626' }}>Irreversible.</strong>
                                 </p>
                                 <button
-                                    onClick={() => {
-                                        if (window.confirm("CRITICAL: Are you sure you want to WIPE ALL MARKS? This cannot be undone.")) {
+                                    onClick={async () => {
+                                        const confirmed = await showConfirm({
+                                            title: 'Wipe Marks',
+                                            message: targetSemester === 'All' ? 'CRITICAL: Are you sure you want to WIPE ALL MARKS? This cannot be undone.' : `CRITICAL: Are you sure you want to WIPE MARKS FOR SEMESTER ${targetSemester}? This cannot be undone.`,
+                                            variant: 'danger',
+                                            confirmText: 'Wipe Marks'
+                                        });
+                                        if (confirmed) {
                                             setResetLoading(true);
-                                            resetMarks(user?.token)
-                                                .then(() => showToast('All Marks Cleared', 'success'))
+                                            resetMarks(targetSemester)
+                                                .then(() => showToast(`Marks Cleared (${targetSemester === 'All' ? 'All' : 'Sem ' + targetSemester})`, 'success'))
                                                 .catch(() => showToast('Failed to clear marks', 'error'))
                                                 .finally(() => setResetLoading(false));
                                         }
                                     }}
-                                    disabled={resetLoading}
+                                    disabled={resetLoading || !targetSemester}
                                     style={{
                                         width: '100%', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '10px',
                                         background: '#ffffff',
-                                        color: '#1e293b', fontWeight: 600, fontSize: '0.9rem', cursor: resetLoading ? 'not-allowed' : 'pointer',
+                                        color: '#1e293b', fontWeight: 600, fontSize: '0.9rem', cursor: resetLoading || !targetSemester ? 'not-allowed' : 'pointer',
                                         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', opacity: resetLoading ? 0.7 : 1
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', opacity: resetLoading || !targetSemester ? 0.5 : 1
                                     }}
                                     onMouseEnter={e => {
-                                        if (!resetLoading) {
+                                        if (!resetLoading && targetSemester) {
                                             e.currentTarget.style.transform = 'translateY(-2px) scale(1.01)';
                                             e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.08)';
                                             e.currentTarget.style.borderColor = '#cbd5e1';
@@ -630,41 +685,77 @@ const PrincipalDashboard = () => {
                                     }}>PROGRESSION</div>
                                 </div>
                                 <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem', fontWeight: 700, color: '#1e293b' }}>Shift to Next Semester</h3>
-                                <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-                                    Advance all students forward by one semester (e.g., <strong style={{ color: '#16a34a' }}>Sem 2 → 3</strong>). Students in 6th sem remain unchanged.
-                                </p>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                    <select
+                                        value={shiftFrom}
+                                        onChange={(e) => setShiftFrom(e.target.value)}
+                                        style={{
+                                            flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #bbf7d0',
+                                            background: '#f0fdf4', color: '#16a34a', fontWeight: 600, fontSize: '0.8rem', outline: 'none'
+                                        }}
+                                    >
+                                        <option value="" disabled>From</option>
+                                        {[1, 2, 3, 4, 5, 6].map(sem => (
+                                            <option key={sem} value={sem}>Sem {sem}</option>
+                                        ))}
+                                    </select>
+                                    <span style={{ color: '#16a34a', fontWeight: 900 }}>→</span>
+                                    <select
+                                        value={shiftTo}
+                                        onChange={(e) => setShiftTo(e.target.value)}
+                                        style={{
+                                            flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #bbf7d0',
+                                            background: '#f0fdf4', color: '#16a34a', fontWeight: 600, fontSize: '0.8rem', outline: 'none'
+                                        }}
+                                    >
+                                        <option value="" disabled>To</option>
+                                        {[1, 2, 3, 4, 5, 6].map(sem => (
+                                            <option key={sem} value={sem}>Sem {sem}</option>
+                                        ))}
+                                    </select>
+                                </div>
                                 <button
-                                    onClick={() => {
-                                        if (window.confirm("Shift all students to the next academic semester?")) {
+                                    onClick={async () => {
+                                        const confirmed = await showConfirm({
+                                            title: 'Semester Shift',
+                                            message: `Move all students from Semester ${shiftFrom} to Semester ${shiftTo}?`,
+                                            variant: 'warning',
+                                            confirmText: 'Move Students'
+                                        });
+                                        if (confirmed) {
                                             setResetLoading(true);
-                                            shiftSemesters(user?.token)
-                                                .then(() => showToast('Students Shifted Successfully', 'success'))
+                                            shiftSemesters(targetSemester || 'All', shiftFrom, shiftTo)
+                                                .then((res) => {
+                                                    showToast(res.message || 'Students Shifted Successfully', 'success');
+                                                    setShiftFrom('');
+                                                    setShiftTo('');
+                                                })
                                                 .catch(() => showToast('Failed to shift semesters', 'error'))
                                                 .finally(() => setResetLoading(false));
                                         }
                                     }}
-                                    disabled={resetLoading}
+                                    disabled={resetLoading || !shiftFrom || !shiftTo}
                                     style={{
-                                        width: '100%', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '10px',
-                                        background: '#ffffff',
-                                        color: '#1e293b', fontWeight: 600, fontSize: '0.9rem', cursor: resetLoading ? 'not-allowed' : 'pointer',
+                                        width: '100%', padding: '0.75rem', border: '1px solid #bbf7d0', borderRadius: '10px',
+                                        background: shiftFrom && shiftTo ? '#f0fdf4' : '#ffffff',
+                                        color: '#16a34a', fontWeight: 600, fontSize: '0.9rem', cursor: resetLoading || !shiftFrom || !shiftTo ? 'not-allowed' : 'pointer',
                                         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', opacity: resetLoading ? 0.7 : 1
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', opacity: resetLoading || !shiftFrom || !shiftTo ? 0.5 : 1
                                     }}
                                     onMouseEnter={e => {
-                                        if (!resetLoading) {
+                                        if (!resetLoading && shiftFrom && shiftTo) {
                                             e.currentTarget.style.transform = 'translateY(-2px) scale(1.01)';
-                                            e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.08)';
-                                            e.currentTarget.style.borderColor = '#cbd5e1';
+                                            e.currentTarget.style.boxShadow = '0 10px 25px rgba(34,197,94,0.1)';
+                                            e.currentTarget.style.borderColor = '#86efac';
                                         }
                                     }}
                                     onMouseLeave={e => {
                                         e.currentTarget.style.transform = 'translateY(0) scale(1)';
                                         e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-                                        e.currentTarget.style.borderColor = '#e2e8f0';
+                                        e.currentTarget.style.borderColor = '#bbf7d0';
                                     }}
                                 >
-                                    {resetLoading ? '⏳ Shifting...' : '🚀 Run Semester Shift'}
+                                    {resetLoading ? '⏳ Shifting...' : '🚀 Move Students'}
                                 </button>
                             </div>
 
@@ -696,28 +787,37 @@ const PrincipalDashboard = () => {
                                 </div>
                                 <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem', fontWeight: 700, color: '#1e293b' }}>Faculty & Data Cleanup</h3>
                                 <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-                                    Reset faculty workloads and wipe all notifications &amp; CIE schedules to prep for the next academic session.
+                                    Reset faculty workloads and wipe notifications &amp; CIE schedules for {targetSemester === 'All' ? 'the entire institution' : `Semester ${targetSemester}`}.
                                 </p>
                                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                                     <button
-                                        onClick={() => {
-                                            if (window.confirm("Reset all faculty assignments?")) {
-                                                resetFaculty(user?.token)
+                                        onClick={async () => {
+                                            const confirmed = await showConfirm({
+                                                title: 'Reset Faculty',
+                                                message: targetSemester === 'All' ? 'Reset all faculty assignments?' : `Reset faculty assignments related to Semester ${targetSemester}?`,
+                                                variant: 'warning',
+                                                confirmText: 'Reset'
+                                            });
+                                            if (confirmed) {
+                                                resetFaculty(targetSemester)
                                                     .then(() => showToast('Faculty Workloads Reset', 'success'))
                                                     .catch(() => showToast('Failed to reset faculty', 'error'));
                                             }
                                         }}
+                                        disabled={!targetSemester}
                                         style={{
                                             flex: 1, padding: '0.7rem', border: '1px solid #e2e8f0',
                                             borderRadius: '10px', background: '#ffffff',
-                                            color: '#1e293b', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer',
+                                            color: '#1e293b', fontWeight: 600, fontSize: '0.85rem', cursor: !targetSemester ? 'not-allowed' : 'pointer',
                                             boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', opacity: !targetSemester ? 0.5 : 1
                                         }}
                                         onMouseEnter={e => {
-                                            e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
-                                            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.06)';
-                                            e.currentTarget.style.borderColor = '#cbd5e1';
+                                            if (targetSemester) {
+                                                e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
+                                                e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.06)';
+                                                e.currentTarget.style.borderColor = '#cbd5e1';
+                                            }
                                         }}
                                         onMouseLeave={e => {
                                             e.currentTarget.style.transform = 'translateY(0) scale(1)';
@@ -728,24 +828,33 @@ const PrincipalDashboard = () => {
                                         👤 Reset Faculty
                                     </button>
                                     <button
-                                        onClick={() => {
-                                            if (window.confirm("Cleanup all notifications and schedules?")) {
-                                                cleanupData(user?.token)
+                                        onClick={async () => {
+                                            const confirmed = await showConfirm({
+                                                title: 'System Cleanup',
+                                                message: targetSemester === 'All' ? 'Cleanup all notifications and schedules?' : `Cleanup schedules and attendance for Semester ${targetSemester}?`,
+                                                variant: 'warning',
+                                                confirmText: 'Cleanup'
+                                            });
+                                            if (confirmed) {
+                                                cleanupData(targetSemester)
                                                     .then(() => showToast('System Cleanup Done', 'success'))
                                                     .catch(() => showToast('Cleanup failed', 'error'));
                                             }
                                         }}
+                                        disabled={!targetSemester}
                                         style={{
                                             flex: 1, padding: '0.7rem', border: '1px solid #e2e8f0',
                                             borderRadius: '10px', background: '#ffffff',
-                                            color: '#1e293b', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer',
+                                            color: '#1e293b', fontWeight: 600, fontSize: '0.85rem', cursor: !targetSemester ? 'not-allowed' : 'pointer',
                                             boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', opacity: !targetSemester ? 0.5 : 1
                                         }}
                                         onMouseEnter={e => {
-                                            e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
-                                            e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.06)';
-                                            e.currentTarget.style.borderColor = '#cbd5e1';
+                                            if (targetSemester) {
+                                                e.currentTarget.style.transform = 'translateY(-2px) scale(1.02)';
+                                                e.currentTarget.style.boxShadow = '0 8px 20px rgba(0,0,0,0.06)';
+                                                e.currentTarget.style.borderColor = '#cbd5e1';
+                                            }
                                         }}
                                         onMouseLeave={e => {
                                             e.currentTarget.style.transform = 'translateY(0) scale(1)';

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import API_BASE_URL from '../config/api';
+import authenticatedFetch from '../utils/authFetch';
 import { X, User, Lock, Eye, EyeOff, Save, Shield, Mail, Building, Hash, GraduationCap, Layers, Edit3, Check } from 'lucide-react';
 import styles from './ProfileModal.module.css';
 
@@ -32,9 +33,7 @@ const ProfileModal = ({ onClose }) => {
 
     const fetchProfile = async () => {
         try {
-            const token = user?.token;
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-            const res = await fetch(`${API_BASE_URL}/profile`, { headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/profile`);
             if (res.ok) {
                 const data = await res.json();
                 setProfile(data);
@@ -57,13 +56,8 @@ const ProfileModal = ({ onClose }) => {
         setSavingProfile(true);
         setSaveMsg({ text: '', type: '' });
         try {
-            const token = user?.token;
-            const res = await fetch(`${API_BASE_URL}/profile`, {
+            const res = await authenticatedFetch(`${API_BASE_URL}/profile`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                },
                 body: JSON.stringify(editForm)
             });
             const data = await res.json();
@@ -115,17 +109,8 @@ const ProfileModal = ({ onClose }) => {
 
         setSaving(true);
         try {
-            const token = user?.token;
-            const body = { currentPassword };
-            if (newPassword) body.newPassword = newPassword;
-            if (canChangeUsername && newUsername !== profile?.username) body.newUsername = newUsername;
-
-            const res = await fetch(`${API_BASE_URL}/profile/credentials`, {
+            const res = await authenticatedFetch(`${API_BASE_URL}/profile/credentials`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                },
                 body: JSON.stringify(body)
             });
 

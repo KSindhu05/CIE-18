@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Bell, X, CheckCircle, AlertCircle, Info, Hash } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import API_BASE_URL from '../config/api';
+import authenticatedFetch from '../utils/authFetch';
 import styles from './NotificationPanel.module.css';
 
 const NotificationPanel = ({ onClose }) => {
@@ -20,9 +21,7 @@ const NotificationPanel = ({ onClose }) => {
 
     const fetchNotifications = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-            const res = await fetch(API_BASE, { headers });
+            const res = await authenticatedFetch(API_BASE);
             if (res.ok) {
                 const data = await res.json();
                 setNotifications(data);
@@ -36,9 +35,7 @@ const NotificationPanel = ({ onClose }) => {
 
     const markAsRead = async (id) => {
         try {
-            const token = localStorage.getItem('token');
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-            await fetch(`${API_BASE}/${id}/read`, { method: 'POST', headers });
+            await authenticatedFetch(`${API_BASE}/${id}/read`, { method: 'POST' });
 
             // Update local state
             setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));

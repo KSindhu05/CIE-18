@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, BookOpen, AlertCircle, CheckCircle } from 'lucide-react';
 import styles from '../../../pages/StudentDashboard.module.css';
+import Skeleton from '../../ui/Skeleton';
 
 const cardVariants = {
     hidden: { opacity: 0, y: 24 },
@@ -16,7 +17,7 @@ const cardVariants = {
     }),
 };
 
-const AcademicSummary = ({ studentInfo, riskLevel, cieStatus = '0/5' }) => {
+const AcademicSummary = ({ studentInfo, riskLevel, cieStatus = '0/5', loading = false }) => {
     const riskColor = riskLevel === 'High' ? 'var(--danger)' : riskLevel === 'Moderate' ? 'var(--warning)' : 'var(--success)';
     const riskLabel = riskLevel || 'Low';
     const isHighRisk = riskLevel === 'High';
@@ -35,7 +36,7 @@ const AcademicSummary = ({ studentInfo, riskLevel, cieStatus = '0/5' }) => {
             iconBg: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(251, 191, 36, 0.08) 100%)',
             iconColor: 'var(--warning)',
             label: 'Avg CIE Score',
-            value: studentInfo.avgCieScore || '0/25',
+            value: studentInfo.avgCieScore || '0/50',
             subtext: 'Current Sem',
         },
         {
@@ -68,7 +69,11 @@ const AcademicSummary = ({ studentInfo, riskLevel, cieStatus = '0/5' }) => {
                     </div>
                     <div className={styles.summaryInfo}>
                         <span className={styles.summaryLabel}>{card.label}</span>
-                        <h3 className={styles.summaryValue}>{card.value}</h3>
+                        {loading ? (
+                            <Skeleton width="80px" height="28px" style={{ margin: '4px 0' }} />
+                        ) : (
+                            <h3 className={styles.summaryValue}>{card.value}</h3>
+                        )}
                         <span className={styles.summarySubtext}>{card.subtext}</span>
                     </div>
                 </motion.div>
@@ -97,7 +102,11 @@ const AcademicSummary = ({ studentInfo, riskLevel, cieStatus = '0/5' }) => {
                 </motion.div>
                 <div className={styles.summaryInfo}>
                     <span className={styles.summaryLabel}>Academic Status</span>
-                    <h3 className={styles.summaryValue} style={{ color: riskColor }}>{riskLabel} Risk</h3>
+                    {loading ? (
+                        <Skeleton width="100px" height="28px" style={{ margin: '4px 0' }} />
+                    ) : (
+                        <h3 className={styles.summaryValue} style={{ color: riskColor }}>{riskLabel} Risk</h3>
+                    )}
                     <span className={styles.summarySubtext}>Based on Marks</span>
                 </div>
             </motion.div>

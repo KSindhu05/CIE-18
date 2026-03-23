@@ -1,10 +1,12 @@
 import React, { memo, useState, useMemo } from 'react';
+import { useDialog } from '../../GlobalDialogProvider';
 
 import { Calendar, Download, Bell, FileText, Search, UserMinus, Briefcase, Clock, Mail, Phone, MapPin, Building, UserCheck, AlertTriangle, X, Trash2, Send, ShieldCheck, RefreshCw, Edit2, Edit3, Eye, EyeOff } from 'lucide-react';
 import { SimpleModal } from './Shared';
 import styles from '../../../pages/PrincipalDashboard.module.css';
+import Skeleton from '../../ui/Skeleton';
 
-export const FacultyDirectorySection = memo(({ facultyMembers = [], onRemove }) => {
+export const FacultyDirectorySection = memo(({ facultyMembers = [], onRemove, loading }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedDept, setSelectedDept] = useState('All Departments');
     const [viewProfile, setViewProfile] = useState(null);
@@ -106,7 +108,26 @@ export const FacultyDirectorySection = memo(({ facultyMembers = [], onRemove }) 
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredFaculty.map((f, index) => (
+                        {loading ? (
+                            [1, 2, 3, 4, 5].map(i => (
+                                <tr key={i}>
+                                    <td><Skeleton width="30px" height="14px" /></td>
+                                    <td><Skeleton width="80px" height="14px" /></td>
+                                    <td>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <Skeleton width="36px" height="36px" variant="circle" />
+                                            <div>
+                                                <Skeleton width="100px" height="14px" style={{ marginBottom: '4px' }} />
+                                                <Skeleton width="60px" height="10px" />
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><Skeleton width="80px" height="24px" /></td>
+                                    <td><Skeleton width="100px" height="24px" /></td>
+                                    <td><Skeleton width="100px" height="32px" /></td>
+                                </tr>
+                            ))
+                        ) : filteredFaculty.map((f, index) => (
                             <tr key={f.id} style={{ transition: 'background 0.2s', cursor: 'default' }}>
                                 <td style={{ color: '#64748b', fontWeight: 500 }}>{index + 1}</td>
                                 <td style={{ fontFamily: 'monospace', color: '#64748b' }}>{f.id || f.EmployeeID}</td>
@@ -241,7 +262,7 @@ export const FacultyDirectorySection = memo(({ facultyMembers = [], onRemove }) 
     );
 });
 
-export const CIEScheduleSection = memo(({ schedules = [], onDownload }) => {
+export const CIEScheduleSection = memo(({ schedules = [], onDownload, loading }) => {
     const [selectedDept, setSelectedDept] = useState(null);
     const departments = ['CSE', 'MECH', 'EEE', 'CV', 'MT'];
 
@@ -298,66 +319,85 @@ export const CIEScheduleSection = memo(({ schedules = [], onDownload }) => {
 
 
 
-            {/* Empty State */}
-            {filteredSchedules.length === 0 && (
+            {/* Empty State / Loading */}
+            {loading ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className={styles.glassCard} style={{ padding: '1.5rem', borderLeft: '4px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                                <div>
+                                    <Skeleton width="150px" height="18px" style={{ marginBottom: '6px' }} />
+                                    <Skeleton width="100px" height="14px" />
+                                </div>
+                                <Skeleton width="60px" height="20px" />
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                                <Skeleton width="120px" height="14px" />
+                                <Skeleton width="140px" height="14px" />
+                                <Skeleton width="100px" height="14px" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : filteredSchedules.length === 0 ? (
                 <div style={{ padding: '3rem', textAlign: 'center', color: '#64748b', background: 'white', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
                     <Calendar size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
                     <p style={{ fontSize: '1.1rem', fontWeight: 500 }}>No exams scheduled for {selectedDept}.</p>
                 </div>
-            )}
+            ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
+                    {filteredSchedules.map(t => (
+                        <div key={t.id} className={styles.glassCard} style={{ display: 'flex', flexDirection: 'column', padding: '1.5rem', position: 'relative', borderLeft: '4px solid #0ea5e9' }}>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }}>
-                {filteredSchedules.map(t => (
-                    <div key={t.id} className={styles.glassCard} style={{ display: 'flex', flexDirection: 'column', padding: '1.5rem', position: 'relative', borderLeft: '4px solid #0ea5e9' }}>
-
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                            <div>
-                                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
-                                    {t.subject ? t.subject.name : 'Unknown Subject'}
-                                </h3>
-                                <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
-                                    {t.cieNumber} | {t.subject?.code}
-                                </p>
-                            </div>
-                            <span style={{
-                                padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
-                                background: t.status === 'COMPLETED' ? '#dcfce7' : '#e0f2fe',
-                                color: t.status === 'COMPLETED' ? '#166534' : '#0369a1'
-                            }}>
-                                {t.status || 'SCHEDULED'}
-                            </span>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.8rem', fontSize: '0.9rem', color: '#334155' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Calendar size={16} color="#64748b" />
-                                <span style={{ fontWeight: 500 }}>{t.scheduledDate || 'Date TBD'}</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Clock size={16} color="#64748b" />
-                                <span>{t.startTime || 'Time TBD'} ({t.durationMinutes || 60} min)</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <MapPin size={16} color="#64748b" />
-                                <span>Room: {t.examRoom || 'TBD'}</span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Building size={16} color="#64748b" />
-                                <span>{t.subject?.department} - Sem {t.subject?.semester}</span>
-                            </div>
-                        </div>
-
-                        <div style={{ marginTop: '1.2rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#64748b' }}>
-                            <UserCheck size={14} />
-                            <span>
-                                Scheduled by: <span style={{ fontWeight: 600, color: '#475569' }}>
-                                    {t.faculty ? t.faculty.username : 'Unknown'}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                                <div>
+                                    <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#0f172a' }}>
+                                        {t.subject ? t.subject.name : 'Unknown Subject'}
+                                    </h3>
+                                    <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: '#64748b', fontWeight: 500 }}>
+                                        {t.cieNumber} | {t.subject?.code}
+                                    </p>
+                                </div>
+                                <span style={{
+                                    padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
+                                    background: t.status === 'COMPLETED' ? '#dcfce7' : '#e0f2fe',
+                                    color: t.status === 'COMPLETED' ? '#166534' : '#0369a1'
+                                }}>
+                                    {t.status || 'SCHEDULED'}
                                 </span>
-                            </span>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.8rem', fontSize: '0.9rem', color: '#334155' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Calendar size={16} color="#64748b" />
+                                    <span style={{ fontWeight: 500 }}>{t.scheduledDate || 'Date TBD'}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Clock size={16} color="#64748b" />
+                                    <span>{t.startTime || 'Time TBD'} ({t.durationMinutes || 60} min)</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <MapPin size={16} color="#64748b" />
+                                    <span>Room: {t.examRoom || 'TBD'}</span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <Building size={16} color="#64748b" />
+                                    <span>{t.subject?.department} - Sem {t.subject?.semester}</span>
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: '1.2rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#64748b' }}>
+                                <UserCheck size={14} />
+                                <span>
+                                    Scheduled by: <span style={{ fontWeight: 600, color: '#475569' }}>
+                                        {t.faculty ? t.faculty.username : 'Unknown'}
+                                    </span>
+                                </span>
+                            </div>
                         </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 });
@@ -372,8 +412,26 @@ export const NotificationsSection = memo(({
     setMessageText,
     onSend,
     onClear,
-    onDelete
-}) => (
+    onDelete,
+    loading,
+    departments = []
+}) => {
+    const [filterDept, setFilterDept] = useState("ALL");
+
+    const displayedNotifs = useMemo(() => {
+        if (filterDept === "ALL") return notifications;
+        const selectedDeptObj = departments.find(d => (d.id || d) === filterDept);
+        const deptId = selectedDeptObj?.id || filterDept;
+        const deptName = selectedDeptObj?.name || filterDept;
+
+        return notifications.filter(n => {
+            if (!n.category) return false;
+            const cat = n.category.toUpperCase();
+            return cat.includes(deptId.toUpperCase()) || cat.includes(deptName.toUpperCase());
+        });
+    }, [notifications, filterDept, departments]);
+
+    return (
     <div className={styles.sectionVisible}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h2 className={styles.chartTitle}>Notifications</h2>
@@ -405,11 +463,11 @@ export const NotificationsSection = memo(({
                             onChange={(e) => setTargetDept && setTargetDept(e.target.value)}
                         >
                             <option value="ALL">All Departments</option>
-                            <option value="CSE">CSE</option>
-                            <option value="ECE">ECE</option>
-                            <option value="ME">ME</option>
-                            <option value="CV">CV</option>
-                            <option value="ISE">ISE</option>
+                            {departments.map(dept => (
+                                <option key={dept.id || (dept.name || dept)} value={dept.id || (dept.name || dept)}>
+                                    {dept.name || dept.id || dept}
+                                </option>
+                            ))}
                         </select>
                     </div>
                     <div>
@@ -442,17 +500,42 @@ export const NotificationsSection = memo(({
             <div className={styles.glassCard} style={{ padding: '1.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: '#1e293b' }}>Inbox &amp; Sent</h3>
-                    {notifications.length > 0 && onClear && (
-                        <button
-                            onClick={onClear}
-                            style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', padding: '0.4rem 0.8rem', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <select 
+                            value={filterDept} 
+                            onChange={e => setFilterDept(e.target.value)}
+                            style={{ padding: '0.3rem 0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.85rem', outline: 'none' }}
                         >
-                            <Trash2 size={14} /> Clear All
-                        </button>
-                    )}
+                            <option value="ALL">All Depts</option>
+                            {departments.map(dept => (
+                                <option key={dept.id || (dept.name || dept)} value={dept.id || (dept.name || dept)}>
+                                    {dept.name || dept.id || dept}
+                                </option>
+                            ))}
+                        </select>
+                        {displayedNotifs.length > 0 && onClear && (
+                            <button
+                                onClick={onClear}
+                                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.85rem', padding: '0.4rem 0.8rem', color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+                            >
+                                <Trash2 size={14} /> Clear {filterDept !== "ALL" ? filterDept : "All"}
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                    {notifications.length > 0 ? notifications.map(notif => (
+                    {loading ? (
+                        [1, 2, 3].map(i => (
+                            <div key={i} style={{ padding: '0.85rem', borderBottom: '1px solid #f1f5f9', display: 'flex', gap: '0.75rem' }}>
+                                <Skeleton width="34px" height="34px" style={{ borderRadius: '8px' }} />
+                                <div style={{ flex: 1 }}>
+                                    <Skeleton width="100%" height="14px" style={{ marginBottom: '6px' }} />
+                                    <Skeleton width="120px" height="10px" />
+                                </div>
+                            </div>
+                        ))
+                    ) : displayedNotifs.length > 0 ? displayedNotifs.map(notif => (
                         <div key={notif.id} style={{
                             position: 'relative', display: 'flex', gap: '0.75rem', alignItems: 'flex-start',
                             padding: '0.85rem',
@@ -502,9 +585,10 @@ export const NotificationsSection = memo(({
             </div>
         </div>
     </div>
-));
+    );
+});
 
-export const ReportsSection = memo(({ reports = [], onDownload, departments = [] }) => {
+export const ReportsSection = memo(({ reports = [], onDownload, departments = [], loading }) => {
     const [selectedDept, setSelectedDept] = useState(departments[0] || '');
     const [downloading, setDownloading] = useState(null);
 
@@ -593,7 +677,19 @@ export const ReportsSection = memo(({ reports = [], onDownload, departments = []
 
             {/* Report Cards Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
-                {reportTypes.map(rt => (
+                {loading ? (
+                    [1, 2, 3, 4, 5].map(i => (
+                        <div key={i} className={styles.glassCard} style={{ padding: '1.5rem', borderTop: '3px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', marginBottom: '0.8rem' }}>
+                                <Skeleton width="32px" height="32px" variant="circle" />
+                                <Skeleton width="120px" height="18px" />
+                            </div>
+                            <Skeleton width="100%" height="12px" style={{ marginBottom: '6px' }} />
+                            <Skeleton width="80%" height="12px" style={{ marginBottom: '1.5rem' }} />
+                            <Skeleton width="100%" height="36px" />
+                        </div>
+                    ))
+                ) : reportTypes.map(rt => (
                     <div key={rt.id} style={{
                         background: 'white', borderRadius: '14px', padding: '1.5rem',
                         border: '1px solid #e2e8f0', boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
@@ -628,7 +724,8 @@ export const ReportsSection = memo(({ reports = [], onDownload, departments = []
     );
 });
 
-export const ManageHODsSection = memo(({ hods = [], onCreate, user, departments = [], onRefresh, onUpdate, onDelete }) => {
+export const ManageHODsSection = memo(({ hods = [], onCreate, user, departments = [], onRefresh, onUpdate, onDelete, loading }) => {
+    const { showConfirm } = useDialog();
     const [name, setName] = useState('');
     const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
@@ -637,6 +734,7 @@ export const ManageHODsSection = memo(({ hods = [], onCreate, user, departments 
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [editingHod, setEditingHod] = useState(null);
     const [showPassword, setShowPassword] = useState(false);
+    const [formError, setFormError] = useState('');
 
     // Fixed 5 departments + ability to add more
     const FIXED_DEPTS = [
@@ -656,8 +754,8 @@ export const ManageHODsSection = memo(({ hods = [], onCreate, user, departments 
     const handleAddDept = () => {
         const id = newDeptId.trim().toUpperCase();
         const nm = newDeptName.trim();
-        if (!id || !nm) { alert('Please enter both department code and name.'); return; }
-        if (allDepts.some(d => d.id === id)) { alert('Department code already exists.'); return; }
+        if (!id || !nm) { setFormError('Please enter both department code and name.'); setTimeout(() => setFormError(''), 3000); return; }
+        if (allDepts.some(d => d.id === id)) { setFormError('Department code already exists.'); setTimeout(() => setFormError(''), 3000); return; }
         setCustomDepts(prev => [...prev, { id, name: nm }]);
         setNewDeptId('');
         setNewDeptName('');
@@ -694,11 +792,11 @@ export const ManageHODsSection = memo(({ hods = [], onCreate, user, departments 
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!name || (!editingHod && !username) || !department) {
-            alert('Name and Department are required.');
+            setFormError('Name and Department are required.'); setTimeout(() => setFormError(''), 3000);
             return;
         }
         if (!editingHod && !password) {
-            alert('Password is required.');
+            setFormError('Password is required.'); setTimeout(() => setFormError(''), 3000);
             return;
         }
 
@@ -867,6 +965,15 @@ export const ManageHODsSection = memo(({ hods = [], onCreate, user, departments 
                         </div>
                     </div>
 
+                    {formError && (
+                        <div style={{
+                            marginTop: '1rem', padding: '0.75rem 1rem', borderRadius: '10px',
+                            background: '#fee2e2', color: '#991b1b', fontWeight: 600, fontSize: '0.88rem',
+                            display: 'flex', alignItems: 'center', gap: '8px', animation: 'dialogIn 0.25s ease-out'
+                        }}>
+                            <AlertTriangle size={16} /> {formError}
+                        </div>
+                    )}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2.5rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '0.85rem', background: '#f1f5f9', padding: '0.5rem 1rem', borderRadius: '8px' }}>
                             <AlertTriangle size={16} />
@@ -898,7 +1005,28 @@ export const ManageHODsSection = memo(({ hods = [], onCreate, user, departments 
                         </tr>
                     </thead>
                     <tbody>
-                        {hods.map((h, index) => (
+                        {loading ? (
+                            [1, 2, 3].map(i => (
+                                <tr key={i}>
+                                    <td style={{ paddingLeft: '2rem' }}><Skeleton width="20px" height="14px" /></td>
+                                    <td><Skeleton width="80px" height="14px" /></td>
+                                    <td>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <Skeleton width="32px" height="32px" variant="circle" />
+                                            <Skeleton width="100px" height="14px" />
+                                        </div>
+                                    </td>
+                                    <td><Skeleton width="60px" height="24px" /></td>
+                                    <td><Skeleton width="150px" height="14px" /></td>
+                                    <td style={{ paddingRight: '2rem', textAlign: 'right' }}>
+                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                            <Skeleton width="28px" height="28px" />
+                                            <Skeleton width="28px" height="28px" />
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))
+                        ) : hods.map((h, index) => (
                             <tr key={h.id}>
                                 <td style={{ paddingLeft: '2rem', color: '#64748b', fontWeight: 500 }}>{index + 1}</td>
                                 <td style={{ fontFamily: 'monospace', fontWeight: 600, color: '#334155' }}>{h.username}</td>
@@ -926,7 +1054,7 @@ export const ManageHODsSection = memo(({ hods = [], onCreate, user, departments 
                                             <Edit3 size={16} />
                                         </button>
                                         <button
-                                            onClick={() => { if (window.confirm(`Are you sure you want to remove ${h.fullName}?`)) onDelete(h.id); }}
+                                            onClick={async () => { const confirmed = await showConfirm({ title: 'Remove HOD', message: `Are you sure you want to remove ${h.fullName}?`, variant: 'danger', confirmText: 'Remove' }); if (confirmed) onDelete(h.id); }}
                                             style={{ padding: '6px', borderRadius: '8px', border: '1px solid #fee2e2', background: '#fef2f2', color: '#ef4444', cursor: 'pointer', transition: 'all 0.2s' }}
                                             title="Delete HOD"
                                         >

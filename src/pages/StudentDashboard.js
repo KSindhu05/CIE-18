@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import DashboardLayout from '../components/DashboardLayout';
 import RightSidebar from '../components/RightSidebar'; // Import RightSidebar
 import API_BASE_URL from '../config/api';
@@ -8,9 +10,17 @@ import { fetchSemesterStatus } from '../services/api';
 import styles from './StudentDashboard.module.css';
 import AcademicSummary from '../components/dashboard/student/AcademicSummary';
 import AcademicInsights from '../components/dashboard/student/AcademicInsights';
+import authenticatedFetch from '../utils/authFetch';
+import Skeleton from '../components/ui/Skeleton';
 
 const StudentDashboard = () => {
-    const [activeSection, setActiveSection] = useState('Overview');
+    const [activeSection, setActiveSection] = useState(() => {
+        return sessionStorage.getItem('studentActiveSection') || 'Overview';
+    });
+
+    React.useEffect(() => {
+        sessionStorage.setItem('studentActiveSection', activeSection);
+    }, [activeSection]);
     const [toast, setToast] = useState({ show: false, message: '' });
 
     const { user } = useAuth(); // Get auth context
@@ -27,6 +37,7 @@ const StudentDashboard = () => {
     const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
     const [facultyList, setFacultyList] = useState([]); // Added facultyList state
     const [semesterStatus, setSemesterStatus] = useState('ACTIVE');
+    const [loading, setLoading] = useState(true);
 
     // Student Profile State
     const [studentInfo, setStudentInfo] = useState({
@@ -41,9 +52,7 @@ const StudentDashboard = () => {
         const fetchMarks = async () => {
             try {
                 if (!user || !user.token) return;
-                const response = await fetch(`${API_BASE_URL}/marks/my-marks`, {
-                    headers: { 'Authorization': `Bearer ${user.token}` }
-                });
+                const response = await authenticatedFetch(`${API_BASE_URL}/marks/my-marks`);
 
                 if (response.ok) {
                     const data = await response.json();
@@ -86,7 +95,7 @@ const StudentDashboard = () => {
                     const totalMarks = recordsWithMarks.reduce((sum, m) => sum + (m.totalScore || 0), 0);
                     const totalMaxMarks = recordsWithMarks.reduce((sum, m) => sum + (m.subject?.maxMarks || 50), 0);
                     const aggregatePercentage = totalMaxMarks > 0 ? ((totalMarks / totalMaxMarks) * 100).toFixed(1) : 0;
-                    let avgScore25 = totalMaxMarks > 0 ? Math.round((totalMarks / totalMaxMarks) * 25) : 0;
+                    let avgScore50 = totalMaxMarks > 0 ? Math.round((totalMarks / totalMaxMarks) * 50) : 0;
 
                     if (data.length > 0) {
                         const s = data[0].student;
@@ -97,14 +106,14 @@ const StudentDashboard = () => {
                             branch: s.department,
                             semester: s.semester,
                             cgpa: aggregatePercentage,
-                            avgCieScore: `${avgScore25}/25`,
+                            avgCieScore: `${avgScore50}/50`,
                             parentPhone: s.parentPhone
                         }));
                         setSelectedSemester(s.semester.toString());
                     } else {
                         // Fetch profile if no marks
                         try {
-                            const profileRes = await fetch(`${API_BASE_URL}/student/profile`, { headers: { 'Authorization': `Bearer ${user.token}` } });
+                            const profileRes = await authenticatedFetch(`${API_BASE_URL}/student/profile`);
                             if (profileRes.ok) {
                                 const s = await profileRes.json();
                                 setStudentInfo(prev => ({
@@ -138,7 +147,7 @@ const StudentDashboard = () => {
         const fetchUpdates = async () => {
             if (!user || !user.token) return;
             try {
-                const subRes = await fetch(`${API_BASE_URL}/student/subjects`, { headers: { 'Authorization': `Bearer ${user.token}` } });
+                const subRes = await authenticatedFetch(`${API_BASE_URL}/student/subjects`);
                 if (subRes.ok) {
                     const subData = await subRes.json();
 
@@ -159,14 +168,14 @@ const StudentDashboard = () => {
                     setRealSubjects(Object.values(mergedSubjects));
                 }
 
-                const annRes = await fetch(`${API_BASE_URL}/cie/student/announcements`, { headers: { 'Authorization': `Bearer ${user.token}` } });
+                const annRes = await authenticatedFetch(`${API_BASE_URL}/cie/student/announcements`);
                 if (annRes.ok) {
                     const anns = await annRes.json();
                     setUpcomingExams(anns.map(a => ({
                         id: a.id, exam: `CIE-${a.cieNumber}`, subject: a.subject?.name || 'Subject', date: a.scheduledDate, time: a.startTime ? a.startTime.substring(0, 5) : 'TBD', duration: a.durationMinutes + ' mins', room: a.examRoom || 'TBD', instructions: a.instructions, syllabus: a.syllabusCoverage
                     })));
                 }
-                const notifRes = await fetch(`${API_BASE_URL}/cie/student/notifications`, { headers: { 'Authorization': `Bearer ${user.token}` } });
+                const notifRes = await authenticatedFetch(`${API_BASE_URL}/cie/student/notifications`);
                 if (notifRes.ok) {
                     const notifs = await notifRes.json();
                     const filteredNotifs = notifs.filter(n => !n.message.includes("Welcome to the IA Management System") && n.type !== 'EXAM_SCHEDULE');
@@ -177,12 +186,14 @@ const StudentDashboard = () => {
                 } else { setNotifications([]); }
             } catch (e) { console.error("Error fetching updates:", e); } finally { setLoadingAnnouncements(false); }
             try {
-                const facRes = await fetch(`${API_BASE_URL}/student/faculty`, { headers: { 'Authorization': `Bearer ${user.token}` } });
+                const facRes = await authenticatedFetch(`${API_BASE_URL}/student/faculty`);
                 if (facRes.ok) { const facData = await facRes.json(); setFacultyList(facData); }
             } catch (e) { console.error("Error fetching faculty:", e); }
         };
 
-        fetchUpdates();
+        fetchMarks();
+        loadSemesterStatus();
+        fetchUpdates().finally(() => setLoading(false));
     }, [user]);
 
     const [selectedSemester, setSelectedSemester] = useState('5');
@@ -195,7 +206,16 @@ const StudentDashboard = () => {
         { label: 'Subjects', path: '/dashboard/student', icon: <Book size={20} />, isActive: activeSection === 'Subjects', onClick: () => setActiveSection('Subjects') },
         { label: 'Faculty', path: '/dashboard/student', icon: <User size={20} />, isActive: activeSection === 'Faculty', onClick: () => setActiveSection('Faculty') },
         { label: 'Syllabus Topics', path: '/dashboard/student', icon: <BookOpen size={20} />, isActive: activeSection === 'Syllabus Topics', onClick: () => setActiveSection('Syllabus Topics') },
-        { label: 'Notifications', path: '/dashboard/student', icon: <Bell size={20} />, isActive: activeSection === 'Notifications', onClick: () => setActiveSection('Notifications'), badge: unreadCount || null },
+        { label: 'Notifications', path: '/dashboard/student', icon: <Bell size={20} />, isActive: activeSection === 'Notifications', onClick: async () => {
+            setActiveSection('Notifications');
+            setUnreadCount(0);
+            setNotifications(prev => prev.map(n => ({...n, isRead: true})));
+            try {
+                await authenticatedFetch(`${API_BASE_URL}/notifications/read-all`, { method: 'POST' });
+            } catch (e) {
+                console.error("Failed to mark all as read", e);
+            }
+        }, badge: unreadCount || null },
     ];
 
     const showToast = (message) => { setToast({ show: true, message }); setTimeout(() => setToast({ show: false, message: '' }), 3000); };
@@ -262,7 +282,17 @@ const StudentDashboard = () => {
                             <table className={styles.table}>
                                 <thead><tr><th>Subject</th><th>{latestCie.label}</th><th>Att %</th><th>Total Progress</th><th style={{ background: '#fefce8', color: '#a16207' }}>Remarks</th></tr></thead>
                                 <tbody>
-                                    {realSubjects.length > 0 ? realSubjects.map((sub, idx) => {
+                                    {loading ? (
+                                        Array.from({ length: 5 }).map((_, i) => (
+                                            <tr key={i}>
+                                                <td><Skeleton width="150px" height="20px" /></td>
+                                                <td><Skeleton width="50px" height="20px" /></td>
+                                                <td><Skeleton width="50px" height="20px" /></td>
+                                                <td><Skeleton width="100%" height="25px" /></td>
+                                                <td><Skeleton width="150px" height="20px" /></td>
+                                            </tr>
+                                        ))
+                                    ) : realSubjects.length > 0 ? realSubjects.map((sub, idx) => {
                                         const mark = realMarks.find(m => m.name === sub.name) || {};
                                         const total = mark.totalScore || 0;
                                         const maxMarks = 250;
@@ -306,7 +336,7 @@ const StudentDashboard = () => {
                             </table>
                         </div>
                     </div>
-                    <AcademicInsights realMarks={realMarks} />
+                    <AcademicInsights realMarks={realMarks} loading={loading} />
                 </div>
             </div>
         );
@@ -315,16 +345,37 @@ const StudentDashboard = () => {
     // ... (rest of render functions remain mostly same but can benefit from global CSS updates)
 
     const downloadCIEMarks = (subjects, filter) => {
-        let headers = ['Code', 'Subject'];
-        if (filter === 'All') {
-            headers.push('CIE-1', 'Att-1', 'CIE-2', 'Att-2', 'CIE-3', 'Att-3', 'CIE-4', 'Att-4', 'CIE-5', 'Att-5');
-        } else {
-            headers.push(filter, 'Attendance');
-        }
-        headers.push('Total');
+        const doc = new jsPDF();
+        
+        // Add Header
+        doc.setFontSize(18);
+        doc.setTextColor(30, 58, 138); // Academic Blue
+        doc.text('CIE MARKS REPORT', 105, 15, { align: 'center' });
+        
+        doc.setFontSize(14);
+        doc.setTextColor(30, 41, 59);
+        doc.text('Sanjay Gandhi Polytechnic', 105, 22, { align: 'center' });
+        
+        // Add Student Info
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Student Name: ${studentInfo.name}`, 14, 35);
+        doc.text(`Registration No: ${studentInfo.rollNo}`, 14, 40);
+        doc.text(`Department: ${studentInfo.branch}`, 14, 45);
+        doc.text(`Semester: ${selectedSemester}`, 14, 50);
+        doc.text(`Internals: ${filter}`, 14, 55);
+        doc.text(`Date of Generation: ${new Date().toLocaleDateString()}`, 14, 60);
 
-        const rows = subjects.map(item => {
-            const row = [item.code, `"${item.subject}"`];
+        let tableHeaders = [['Code', 'Subject']];
+        if (filter === 'All') {
+            tableHeaders[0].push('C1', 'A1', 'C2', 'A2', 'C3', 'A3', 'C4', 'A4', 'C5', 'A5');
+        } else {
+            tableHeaders[0].push('Marks', 'Attendance');
+        }
+        tableHeaders[0].push('Total');
+
+        const tableRows = subjects.map(item => {
+            const row = [item.code, item.subject];
             if (filter === 'All') {
                 row.push(item.cie1, item.cie1Att, item.cie2, item.cie2Att, item.cie3, item.cie3Att, item.cie4, item.cie4Att, item.cie5, item.cie5Att);
             } else {
@@ -337,17 +388,21 @@ const StudentDashboard = () => {
                 row.push(score, att);
             }
             row.push(item.total);
-            return row.join(',');
+            return row;
         });
 
-        const csv = [headers.join(','), ...rows].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `CIE_Marks_${studentInfo.rollNo}_${filter.replace('-', '_')}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+        autoTable(doc, {
+            startY: 70,
+            head: tableHeaders,
+            body: tableRows,
+            theme: 'grid',
+            headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255] },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
+            styles: { fontSize: 8, cellPadding: 2 },
+            margin: { top: 70 }
+        });
+
+        doc.save(`CIE_Marks_${studentInfo.rollNo}_${filter.replace('-', '_')}.pdf`);
     };
 
     const renderCIEMarks = () => {
@@ -408,7 +463,7 @@ const StudentDashboard = () => {
                 <div className={styles.card} style={{ marginBottom: '1.5rem', animationDelay: '0.1s' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                         <div className={styles.selectionRow} style={{ flex: 1 }}>
-                            <div className={styles.selectionGroup}><label className={styles.selectionLabel}>Select Semester:</label><select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className={styles.filterSelect}>{[1, 2, 3, 4, 5, 6, 7, 8].map(sem => <option key={sem} value={sem}>Semester {sem}</option>)}</select></div>
+                            <div className={styles.selectionGroup}><label className={styles.selectionLabel}>Select Semester:</label><select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className={styles.filterSelect}>{[1, 2, 3, 4, 5, 6].map(sem => <option key={sem} value={sem}>Semester {sem}</option>)}</select></div>
                             <div className={styles.selectionGroup}><label className={styles.selectionLabel}>Select Internals:</label>
                                 <select value={selectedCIE} onChange={(e) => setSelectedCIE(e.target.value)} className={styles.filterSelect}>
                                     <option value="All">All Internals</option>
@@ -420,7 +475,7 @@ const StudentDashboard = () => {
                                 </select>
                             </div>
                         </div>
-                        <button onClick={() => downloadCIEMarks(theorySubjects, selectedCIE)} className={styles.actionBtn} style={{ padding: '0.5rem 1rem' }}><Download size={16} /> Download CSV</button>
+                        <button onClick={() => downloadCIEMarks(theorySubjects, selectedCIE)} className={styles.actionBtn} style={{ padding: '0.5rem 1rem' }}><FileText size={16} /> Download PDF</button>
                     </div>
                 </div>
 
@@ -452,12 +507,70 @@ const StudentDashboard = () => {
                                             <><th>Marks ({selectedCIE})</th><th>Attendance</th></>
                                         )}
                                         <th>Total (250)</th>
-                                        <th style={{ background: '#fefce8', color: '#a16207' }}>Status</th>
+                                        <th style={{ background: '#fefce8', color: '#a16207' }}>Remarks</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {theorySubjects.map((row, idx) => {
-                                        const status = getStatus(row.total, 250);
+                                        const getCieRemark = (v, a, label) => {
+                                            if (v == null || isNaN(v) || a == null || isNaN(a)) return null;
+                                            return {
+                                                label,
+                                                lowMarks: v < 25,
+                                                lowAtt: a < 75,
+                                                excellent: v >= 40 && a >= 75,
+                                                severity: (v < 25 && a < 75) ? 3 : (v < 25 ? 2 : (a < 75 ? 2 : 0)),
+                                                text: (v < 25 && a < 75) ? `${label}: Low Marks, Low Att` :
+                                                    (v < 25 ? `${label}: Low Marks` :
+                                                        (a < 75 ? `${label}: Low Att` :
+                                                            (v >= 40 && a >= 75 ? `${label}: Excellent` : `${label}: Good`)))
+                                            };
+                                        };
+
+                                        const allCies = [
+                                            getCieRemark(row.cie1 !== '-' ? parseFloat(row.cie1) : null, row.cie1Att !== '-' ? parseFloat(row.cie1Att) : null, 'CIE-1'),
+                                            getCieRemark(row.cie2 !== '-' ? parseFloat(row.cie2) : null, row.cie2Att !== '-' ? parseFloat(row.cie2Att) : null, 'CIE-2'),
+                                            getCieRemark(row.cie3 !== '-' ? parseFloat(row.cie3) : null, row.cie3Att !== '-' ? parseFloat(row.cie3Att) : null, 'CIE-3'),
+                                            getCieRemark(row.cie4 !== '-' ? parseFloat(row.cie4) : null, row.cie4Att !== '-' ? parseFloat(row.cie4Att) : null, 'CIE-4'),
+                                            getCieRemark(row.cie5 !== '-' ? parseFloat(row.cie5) : null, row.cie5Att !== '-' ? parseFloat(row.cie5Att) : null, 'CIE-5')
+                                        ];
+                                        const filled = allCies.filter(r => r !== null);
+
+                                        let finalRemark = '-';
+                                        let finalColor = '#94a3b8';
+                                        let finalBg = 'transparent';
+
+                                        if (selectedCIE === 'All' && filled.length > 0) {
+                                            const worst = Math.max(...filled.map(r => r.severity));
+                                            finalColor = worst >= 3 ? '#dc2626' : worst >= 2 ? '#ea580c' : '#15803d';
+                                            finalBg = worst >= 3 ? '#fef2f2' : worst >= 2 ? '#fff7ed' : '#f0fdf4';
+
+                                            const lowMarksCies = filled.filter(r => r.lowMarks).map(r => r.label);
+                                            const lowAttCies = filled.filter(r => r.lowAtt).map(r => r.label);
+
+                                            let textParts = [];
+                                            if (lowMarksCies.length > 0) textParts.push(`${lowMarksCies.join(',')} Low Marks`);
+                                            if (lowAttCies.length > 0) textParts.push(`${lowAttCies.join(',')} Low Att`);
+                                            if (textParts.length === 0) {
+                                                const allExcellent = filled.every(r => r.excellent);
+                                                textParts.push(allExcellent ? 'All Excellent' : 'All Good');
+                                            }
+                                            finalRemark = textParts.join(' | ');
+                                        } else if (selectedCIE !== 'All') {
+                                            let target = null;
+                                            if (selectedCIE === 'CIE-1') target = allCies[0];
+                                            else if (selectedCIE === 'CIE-2') target = allCies[1];
+                                            else if (selectedCIE === 'CIE-3') target = allCies[2];
+                                            else if (selectedCIE === 'CIE-4') target = allCies[3];
+                                            else if (selectedCIE === 'CIE-5') target = allCies[4];
+
+                                            if (target) {
+                                                finalRemark = target.text;
+                                                finalColor = target.severity >= 3 ? '#dc2626' : target.severity >= 2 ? '#ea580c' : target.severity === 0 ? '#15803d' : '#2563eb';
+                                                finalBg = target.severity >= 3 ? '#fef2f2' : target.severity >= 2 ? '#fff7ed' : '#f0fdf4';
+                                            }
+                                        }
+
                                         return (
                                             <tr key={idx} style={{ animation: `fadeIn 0.3s ease-out ${idx * 0.05}s backwards` }}>
                                                 <td><div className={styles.subjectCell}><span style={{ fontWeight: 600 }}>{row.subject}</span><span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{row.code}</span></div></td>
@@ -476,7 +589,13 @@ const StudentDashboard = () => {
                                                     </>
                                                 )}
                                                 <td style={{ fontWeight: 700, color: 'var(--accent-indigo)' }}>{row.total} / 250</td>
-                                                <td><span className={styles.badge} style={{ background: `${status.color}15`, color: status.color }}>{status.label}</span></td>
+                                                <td>
+                                                    {finalRemark !== '-' ? (
+                                                        <div style={{ fontSize: '0.65rem', padding: '6px 4px', fontWeight: 600, color: finalColor, background: finalBg, borderRadius: '6px', whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4', minWidth: '150px' }}>{finalRemark}</div>
+                                                    ) : (
+                                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', padding: '6px 10px', textAlign: 'center' }}>-</div>
+                                                    )}
+                                                </td>
                                             </tr>
                                         );
                                     })}
@@ -501,7 +620,16 @@ const StudentDashboard = () => {
                     <table className={styles.table}>
                         <thead><tr><th>Code</th><th>Subject Name</th><th>Department</th><th>Semester</th></tr></thead>
                         <tbody>
-                            {realSubjects.length > 0 ? realSubjects.map((sub, idx) => (
+                            {loading ? (
+                                Array.from({ length: 6 }).map((_, i) => (
+                                    <tr key={i}>
+                                        <td><Skeleton width="80px" height="24px" /></td>
+                                        <td><Skeleton width="200px" height="20px" /></td>
+                                        <td><Skeleton width="100px" height="20px" /></td>
+                                        <td><Skeleton width="40px" height="20px" /></td>
+                                    </tr>
+                                ))
+                            ) : realSubjects.length > 0 ? realSubjects.map((sub, idx) => (
                                 <tr key={idx} style={{ animation: `fadeIn 0.3s ease-out ${idx * 0.05}s backwards` }}>
                                     <td><span className={styles.codeBadge}>{sub.code}</span></td>
                                     <td><span style={{ fontWeight: 600 }}>{sub.name}</span></td>
@@ -518,7 +646,18 @@ const StudentDashboard = () => {
     const renderFaculty = () => (
         <div className={styles.detailsContainer}>
             <div className={styles.facultyGrid} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem', animation: 'fadeIn 0.8s ease-out' }}>
-                {facultyList.length > 0 ? facultyList.map((fac, idx) => (
+                {loading ? (
+                    Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className={styles.facultyCard}>
+                            <Skeleton variant="circle" width="64px" height="64px" style={{ marginBottom: '1rem' }} />
+                            <Skeleton width="140px" height="24px" style={{ marginBottom: '0.5rem' }} />
+                            <Skeleton width="100px" height="16px" style={{ marginBottom: '1rem' }} />
+                            <div style={{ width: '100%', height: '1px', background: 'var(--border-color)', margin: '0.75rem 0' }}></div>
+                            <Skeleton width="180px" height="16px" style={{ marginBottom: '0.5rem' }} />
+                            <Skeleton width="80px" height="16px" />
+                        </div>
+                    ))
+                ) : facultyList.length > 0 ? facultyList.map((fac, idx) => (
                     <div key={idx} className={styles.facultyCard} style={{ animation: `fadeIn 0.5s ease-out ${idx * 0.1}s backwards` }}>
                         <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', color: '#3b82f6', border: '1px solid #bfdbfe' }}><User size={32} /></div>
                         <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem', fontWeight: '700' }}>{fac.name}</h3>
@@ -609,11 +748,19 @@ const StudentDashboard = () => {
                 <header className={styles.header}>
                     <div className={styles.headerLeft}>
                         <h1 className={styles.welcomeText}>
-                            {activeSection === 'Overview' ?
+                            {loading ? (
+                                <Skeleton width="300px" height="40px" />
+                            ) : activeSection === 'Overview' ? (
                                 <span className={styles.typewriter}>{typedText}</span>
-                                : activeSection}
+                            ) : activeSection}
                         </h1>
-                        <p className={styles.subtitle}>{studentInfo.branch} | Semester: {studentInfo.semester} | Reg No: {studentInfo.rollNo}</p>
+                        <p className={styles.subtitle}>
+                            {loading ? (
+                                <Skeleton width="250px" height="20px" style={{ marginTop: '8px' }} />
+                            ) : (
+                                <>{studentInfo.branch} | Semester: {studentInfo.semester} | Reg No: {studentInfo.rollNo}</>
+                            )}
+                        </p>
                     </div>
                 </header>
 
@@ -621,6 +768,7 @@ const StudentDashboard = () => {
                     <AcademicSummary
                         studentInfo={studentInfo}
                         cieStatus={cieStatus}
+                        loading={loading}
                         // Risk Logic: High if Aggregate < 40 OR Attendance < 75. Moderate if Aggregate < 60. Else Low.
                         riskLevel={
                             (parseFloat(studentInfo.cgpa) < 40) ? 'High' :

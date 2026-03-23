@@ -2,9 +2,12 @@ import React, { useState } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import API_BASE_URL from '../config/api';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../components/GlobalDialogProvider';
 import { LayoutDashboard, Users, FilePlus, Save, AlertCircle, Phone, FileText, CheckCircle, Search, Filter, Mail, X, Download, Clock, BarChart2, TrendingUp, TrendingDown, Award, ClipboardList, AlertTriangle, Edit3, Edit, Calendar, UserCheck, BookOpen, Upload, Megaphone, Lock, Bell, MapPin, Trash2, Building2, Send, RefreshCw, MessageSquare } from 'lucide-react';
 import { facultyData, facultyProfiles, facultySubjects, studentsList, labSchedule, getMenteesForFaculty } from '../utils/mockData';
 import styles from './FacultyDashboard.module.css';
+import authenticatedFetch from '../utils/authFetch';
+import Skeleton from '../components/ui/Skeleton';
 
 
 
@@ -17,9 +20,271 @@ const calculateGradeFromPercentage = (percentage) => {
     return 'F';
 };
 
+const DebouncedInput = ({ value, onChange, max, style, className, disabled, onFocus }) => {
+    const [localValue, setLocalValue] = useState(value);
+
+    React.useEffect(() => {
+        setLocalValue(value);
+    }, [value]);
+
+    const handleBlur = () => {
+        if (localValue !== value) {
+            onChange(localValue);
+        }
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            handleBlur();
+            moveFocus(e.target, 1);
+        } else if (e.key === 'ArrowDown') {
+            moveFocus(e.target, 1);
+            e.preventDefault();
+        } else if (e.key === 'ArrowUp') {
+            moveFocus(e.target, -1);
+            e.preventDefault();
+        }
+    };
+
+    const moveFocus = (target, direction) => {
+        const td = target.closest('td');
+        if (!td) return;
+        const tr = td.closest('tr');
+        if (!tr) return;
+        const cellIndex = Array.from(tr.children).indexOf(td);
+        
+        const nextTr = direction === 1 ? tr.nextElementSibling : tr.previousElementSibling;
+        if (nextTr) {
+            const nextTd = nextTr.children[cellIndex];
+            if (nextTd) {
+                const nextInput = nextTd.querySelector('input');
+                if (nextInput && !nextInput.disabled) {
+                    nextInput.focus();
+                    nextInput.select();
+                }
+            }
+        }
+    };
+
+    const handleChange = (e) => {
+        let val = e.target.value;
+        if (val === 'Ab') {
+            setLocalValue(val);
+            return;
+        }
+        
+        if (val === '') {
+            setLocalValue('');
+            return;
+        }
+
+        let num = parseInt(val, 10);
+        if (isNaN(num)) return;
+
+        if (num < 0) num = 0;
+        if (max && num > max) num = max;
+        
+        setLocalValue(num.toString());
+    };
+
+    return (
+        <input
+            type="number"
+            className={className}
+            style={style}
+            value={localValue === null || localValue === undefined ? '' : localValue}
+            max={max}
+            min="0"
+            disabled={disabled}
+            onChange={handleChange}
+            onBlur={handleBlur}
+            onKeyDown={handleKeyDown}
+            onFocus={onFocus}
+        />
+    );
+};
+
+const FacultyStudentRow = React.memo(({ student, index, marks, selectedCieType, setSelectedCieType, styles, handleMarkChange, cieLockStatus, calculateAverage }) => {
+    const sMarks = marks || {};
+    const ia1Mark = sMarks['CIE1'] || {};
+
+    const valCIE1 = sMarks.cie1 !== undefined ? sMarks.cie1 : (ia1Mark.cie1Score != null ? ia1Mark.cie1Score : '');
+    const valCIE2 = sMarks.cie2 !== undefined ? sMarks.cie2 : (ia1Mark.cie2Score != null ? ia1Mark.cie2Score : '');
+    const valCIE3 = sMarks.cie3 !== undefined ? sMarks.cie3 : '';
+    const valCIE4 = sMarks.cie4 !== undefined ? sMarks.cie4 : '';
+    const valCIE5 = sMarks.cie5 !== undefined ? sMarks.cie5 : '';
+
+    const renderAttendanceCell = (cieKey) => {
+        if (selectedCieType !== cieKey && selectedCieType !== 'all') return null;
+        const attField = cieKey + 'Att';
+        return (
+            <td style={{ background: '#f0fdf4' }}>
+                <DebouncedInput
+                    className={styles.markInput}
+                    value={sMarks[attField] !== undefined ? sMarks[attField] : ''}
+                    onChange={(newVal) => handleMarkChange(student.id, attField, newVal)}
+                    max={100}
+                    disabled={cieLockStatus[cieKey]}
+                    style={{ background: cieLockStatus[cieKey] ? '#e5e7eb' : '#f0fdf4', border: '1px solid #86efac' }}
+                />
+            </td>
+        );
+    };
+
+    return (
+        <tr key={student.id}>
+            <td>{index + 1}</td>
+            <td style={{ whiteSpace: 'nowrap' }}>{student.rollNo || student.regNo}</td>
+            <td style={{ whiteSpace: 'nowrap' }}>{student.name}</td>
+            <td style={['cie1', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
+                <DebouncedInput
+                    className={styles.markInput}
+                    value={valCIE1}
+                    onChange={(newVal) => handleMarkChange(student.id, 'cie1', newVal)}
+                    onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie1') }}
+                    max={50}
+                    disabled={cieLockStatus.cie1}
+                    style={cieLockStatus.cie1 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
+                />
+            </td>
+            {renderAttendanceCell('cie1')}
+            <td style={['cie2', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
+                <DebouncedInput
+                    className={styles.markInput}
+                    value={valCIE2}
+                    onChange={(newVal) => handleMarkChange(student.id, 'cie2', newVal)}
+                    onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie2') }}
+                    max={50}
+                    disabled={cieLockStatus.cie2}
+                    style={cieLockStatus.cie2 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
+                />
+            </td>
+            {renderAttendanceCell('cie2')}
+            <td style={['cie3', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
+                <DebouncedInput
+                    className={styles.markInput}
+                    value={valCIE3}
+                    onChange={(newVal) => handleMarkChange(student.id, 'cie3', newVal)}
+                    onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie3') }}
+                    max={50}
+                    disabled={cieLockStatus.cie3}
+                    style={cieLockStatus.cie3 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
+                />
+            </td>
+            {renderAttendanceCell('cie3')}
+            <td style={['cie4', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
+                <DebouncedInput
+                    className={styles.markInput}
+                    value={valCIE4}
+                    onChange={(newVal) => handleMarkChange(student.id, 'cie4', newVal)}
+                    onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie4') }}
+                    max={50}
+                    disabled={cieLockStatus.cie4}
+                    style={cieLockStatus.cie4 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
+                />
+            </td>
+            {renderAttendanceCell('cie4')}
+            <td style={['cie5', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
+                <DebouncedInput
+                    className={styles.markInput}
+                    value={valCIE5}
+                    onChange={(newVal) => handleMarkChange(student.id, 'cie5', newVal)}
+                    onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie5') }}
+                    max={50}
+                    disabled={cieLockStatus.cie5}
+                    style={cieLockStatus.cie5 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
+                />
+            </td>
+            {renderAttendanceCell('cie5')}
+            <td style={{ fontWeight: 'bold' }}>{calculateAverage(student)}</td>
+            {(() => {
+                const getCieRemark = (key, label) => {
+                    const v = sMarks[key] !== undefined && sMarks[key] !== '' ? parseFloat(sMarks[key]) : null;
+                    const a = sMarks[key + 'Att'] !== undefined && sMarks[key + 'Att'] !== '' ? parseFloat(sMarks[key + 'Att']) : null;
+                    if (v == null || isNaN(v) || a == null || isNaN(a)) return null;
+
+                    return {
+                        label,
+                        lowMarks: v < 25,
+                        lowAtt: a < 75,
+                        excellent: v >= 40 && a >= 75,
+                        severity: (v < 25 && a < 75) ? 3 : (v < 25 ? 2 : (a < 75 ? 2 : 0)),
+                        text: (v < 25 && a < 75) ? `${label}: Low Marks, Low Att` :
+                            (v < 25 ? `${label}: Low Marks` :
+                                (a < 75 ? `${label}: Low Att` :
+                                    (v >= 40 && a >= 75 ? `${label}: Excellent` : `${label}: Good`)))
+                    };
+                };
+                const allCies = [
+                    getCieRemark('cie1', 'CIE-1'), getCieRemark('cie2', 'CIE-2'),
+                    getCieRemark('cie3', 'CIE-3'), getCieRemark('cie4', 'CIE-4'),
+                    getCieRemark('cie5', 'CIE-5')
+                ];
+                const filled = allCies.filter(r => r !== null);
+
+                if (selectedCieType === 'all' && filled.length > 0) {
+                    const worst = Math.max(...filled.map(r => r.severity));
+                    const color = worst >= 3 ? '#dc2626' : worst >= 2 ? '#ea580c' : '#15803d';
+                    const bg = worst >= 3 ? '#fef2f2' : worst >= 2 ? '#fff7ed' : '#f0fdf4';
+
+                    const lowMarksCies = filled.filter(r => r.lowMarks).map(r => r.label);
+                    const lowAttCies = filled.filter(r => r.lowAtt).map(r => r.label);
+
+                    let textParts = [];
+                    if (lowMarksCies.length > 0) {
+                        textParts.push(`${lowMarksCies.join(',')} Low Marks`);
+                    }
+                    if (lowAttCies.length > 0) {
+                        textParts.push(`${lowAttCies.join(',')} Low Att`);
+                    }
+                    if (textParts.length === 0) {
+                        const allExcellent = filled.every(r => r.excellent);
+                        textParts.push(allExcellent ? 'All Excellent' : 'All Good');
+                    }
+                    const text = textParts.join(' | ');
+                    return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
+                        <div style={{ fontSize: '0.65rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{text}</div>
+                    </td>;
+                } else if (selectedCieType === 'all' && filled.length === 0) {
+                    return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
+                }
+
+                const focused = getCieRemark(selectedCieType, selectedCieType.replace('cie', 'CIE-'));
+                if (!focused) return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
+                const color = focused.severity >= 3 ? '#dc2626' : focused.severity >= 2 ? '#ea580c' : focused.severity === 0 ? '#15803d' : '#2563eb';
+                const bg = focused.severity >= 3 ? '#fef2f2' : focused.severity >= 2 ? '#fff7ed' : '#f0fdf4';
+                return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{focused.text}</div>
+                </td>;
+            })()}
+        </tr>
+    );
+}, (prev, next) => {
+    return prev.student.id === next.student.id &&
+        prev.index === next.index &&
+        prev.marks === next.marks &&
+        prev.selectedCieType === next.selectedCieType &&
+        prev.styles === next.styles &&
+        prev.handleMarkChange === next.handleMarkChange &&
+        prev.cieLockStatus === next.cieLockStatus &&
+        prev.calculateAverage === next.calculateAverage;
+});
+
 const FacultyDashboard = () => {
     const { user } = useAuth();
-    const [activeSection, setActiveSection] = useState('Overview');
+    const { showConfirm, showPrompt } = useDialog();
+    const [activeSection, setActiveSection] = useState(() => {
+        return sessionStorage.getItem('facultyActiveSection') || 'Overview';
+    });
+
+    // Unlock Request State
+    const [showUnlockModal, setShowUnlockModal] = useState(false);
+    const [unlockReason, setUnlockReason] = useState('');
+    const [unlockSelectedCies, setUnlockSelectedCies] = useState([]);
+
+    React.useEffect(() => {
+        sessionStorage.setItem('facultyActiveSection', activeSection);
+    }, [activeSection]);
     const [selectedSubject, setSelectedSubject] = useState(null);
     const [selectedCieDept, setSelectedCieDept] = useState(null); // New state for Dept selection in CIE Entry
     const [selectedOverviewDept, setSelectedOverviewDept] = useState(null); // New state for Dept selection in Overview
@@ -57,6 +322,7 @@ const FacultyDashboard = () => {
     const [subjects, setSubjects] = useState([]);
     const [students, setStudents] = useState([]);
     const [allStudentMarks, setAllStudentMarks] = useState({}); // { subjectId: { studentId: { ...marks } } }
+    const [loading, setLoading] = useState(true);
     const API_BASE = `${API_BASE_URL}/marks`;
     const [facultyClassAnalytics, setFacultyClassAnalytics] = useState({
         evaluated: 0,
@@ -209,8 +475,7 @@ const FacultyDashboard = () => {
     const fetchAnalytics = React.useCallback(async () => {
         if (!user || !user.token) return;
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}` };
-            const anRes = await fetch(`${API_BASE_URL}/faculty/analytics`, { headers });
+            const anRes = await authenticatedFetch(`${API_BASE_URL}/faculty/analytics`);
             if (anRes.ok) {
                 const data = await anRes.json();
                 setFacultyClassAnalytics(data);
@@ -231,12 +496,11 @@ const FacultyDashboard = () => {
         if (!user || !user.token) return;
 
         const fetchInitialData = async () => {
-            const headers = { 'Authorization': `Bearer ${user.token}` };
             console.log("Fetching initial data for faculty...");
 
             // Fetch Students (filtered by faculty's assigned sections)
             try {
-                const sRes = await fetch(`${API_BASE_URL}/faculty/my-students`, { headers });
+                const sRes = await authenticatedFetch(`${API_BASE_URL}/faculty/my-students`);
                 console.log("Students API status:", sRes.status);
                 if (sRes.ok) {
                     const data = await sRes.json();
@@ -251,7 +515,7 @@ const FacultyDashboard = () => {
 
             // Fetch Subjects (By Faculty Assignment)
             try {
-                const subRes = await fetch(`${API_BASE_URL}/faculty/my-subjects`, { headers });
+                const subRes = await authenticatedFetch(`${API_BASE_URL}/faculty/my-subjects`);
                 console.log("Subjects API status:", subRes.status);
                 if (subRes.ok) {
                     const data = await subRes.json();
@@ -269,7 +533,7 @@ const FacultyDashboard = () => {
 
             // Fetch Notifications
             try {
-                const notifRes = await fetch(`${API_BASE_URL}/notifications`, { headers });
+                const notifRes = await authenticatedFetch(`${API_BASE_URL}/notifications`);
                 if (notifRes.ok) {
                     const notifs = await notifRes.json();
                     setNotifications(notifs);
@@ -283,7 +547,7 @@ const FacultyDashboard = () => {
 
             // Fetch Published CIE Schedules (from HOD)
             try {
-                const schedRes = await fetch(`${API_BASE_URL}/cie/faculty/schedules`, { headers });
+                const schedRes = await authenticatedFetch(`${API_BASE_URL}/cie/faculty/schedules`);
                 if (schedRes.ok) {
                     const scheds = await schedRes.json();
                     setPublishedSchedules(scheds);
@@ -294,29 +558,15 @@ const FacultyDashboard = () => {
 
             // Fetch Marks for all subjects (for analytics and proctoring)
             try {
-                // We need to fetch marks for all subjects this faculty handles
-                // Since we don't have the subjects list fully ready here (async), 
-                // we might need to rely on the 'my-subjects' response or fetch all marks for faculty.
-                // Assuming there's an endpoint or we iterate.
-                // For now, let's try to fetch marks for the subjects we just fetched.
-
-                // Correction: We can't easily access 'data' from subRes here without restructuring.
-                // Let's blindly fetch marks for all subjects if we can, or just wait for user to select.
-                // But 'myStudents' needs marks.
-
                 // Workaround: Fetch all marks for faculty's subjects.
-                // If API supports it: GET /faculty/all-marks
-                // If not, we iterate.
-
-                // Let's assume we can fetch marks for each subject.
-                const subRes = await fetch(`${API_BASE_URL}/faculty/my-subjects`, { headers });
+                const subRes = await authenticatedFetch(`${API_BASE_URL}/faculty/my-subjects`);
                 if (subRes.ok) {
                     const subs = await subRes.json();
                     const marksMap = {};
 
                     await Promise.all(subs.map(async (sub) => {
                         try {
-                            const mRes = await fetch(`${API_BASE_URL}/marks/subject/${sub.id}`, { headers });
+                            const mRes = await authenticatedFetch(`${API_BASE_URL}/marks/subject/${sub.id}`);
                             if (mRes.ok) {
                                 const mData = await mRes.json();
                                 // Transform to { studentId: marks }
@@ -345,7 +595,8 @@ const FacultyDashboard = () => {
             }
 
         };
-        fetchInitialData();
+        setLoading(true);
+        fetchInitialData().finally(() => setLoading(false));
 
     }, [user, fetchAnalytics]);
 
@@ -440,8 +691,15 @@ const FacultyDashboard = () => {
                         if (idx !== -1 && row[idx] !== "") {
                             let val = row[idx];
                             if (val !== 'Ab') {
-                                val = parseInt(val, 10);
-                                if (isNaN(val)) val = '';
+                                let numVal = parseInt(val, 10);
+                                if (isNaN(numVal)) {
+                                    val = '';
+                                } else {
+                                    const max = stateField.endsWith('Att') ? 100 : 50;
+                                    if (numVal < 0) numVal = 0;
+                                    if (numVal > max) numVal = max;
+                                    val = numVal;
+                                }
                             }
                             if (!newMarks[student.id]) newMarks[student.id] = { cie1: '', cie2: '', cie3: '', cie4: '', cie5: '', cie1Att: '', cie2Att: '', cie3Att: '', cie4Att: '', cie5Att: '' };
                             newMarks[student.id][stateField] = val;
@@ -578,12 +836,7 @@ const FacultyDashboard = () => {
 
         // Fallback to API call if not found in state
         try {
-            const token = user?.token;
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-
-            const response = await fetch(`${API_BASE_URL}/cie/faculty/announcements/details?subjectId=${iaConfig.subjectId}&cieNumber=${iaConfig.cieNumber}`, {
-                headers
-            });
+            const response = await authenticatedFetch(`${API_BASE_URL}/cie/faculty/announcements/details?subjectId=${iaConfig.subjectId}&cieNumber=${iaConfig.cieNumber}`);
 
             if (response.ok) {
                 const result = await response.json();
@@ -624,21 +877,14 @@ const FacultyDashboard = () => {
         }
 
         try {
-            const token = user?.token;
-            const headers = {
-                'Content-Type': 'application/json',
-                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-            };
-
             const payload = {
                 subjectId: iaConfig.subjectId,
                 cieNumber: parseInt(iaConfig.cieNumber),
                 syllabusCoverage: iaConfig.syllabus
             };
 
-            const response = await fetch(`${API_BASE_URL}/cie/faculty/announcements/syllabus`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/cie/faculty/announcements/syllabus`, {
                 method: 'PUT',
-                headers,
                 body: JSON.stringify(payload)
             });
 
@@ -783,7 +1029,17 @@ const FacultyDashboard = () => {
             path: '/dashboard/faculty',
             icon: <Bell size={20} />,
             isActive: activeSection === 'Notifications',
-            onClick: () => { setActiveSection('Notifications'); setSelectedSubject(null); },
+            onClick: async () => { 
+                setActiveSection('Notifications'); 
+                setSelectedSubject(null); 
+                setUnreadCount(0);
+                setNotifications(prev => prev.map(n => ({...n, isRead: true})));
+                try {
+                    await authenticatedFetch(`${API_BASE_URL}/notifications/read-all`, { method: 'POST' });
+                } catch (e) {
+                    console.error("Failed to mark all as read", e);
+                }
+            },
             badge: unreadCount || null
         },
     ];
@@ -803,9 +1059,7 @@ const FacultyDashboard = () => {
         setCieLockStatus({ cie1: false, cie2: false, cie3: false, cie4: false, cie5: false }); // All unlocked by default
 
         try {
-            const token = user?.token;
-            const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-            const res = await fetch(`${API_BASE_URL}/marks/subject/${subject.id}`, { headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/marks/subject/${subject.id}`);
 
             if (res.ok) {
                 const data = await res.json();
@@ -877,7 +1131,15 @@ const FacultyDashboard = () => {
                     cie4: role === 'THEORY' || cieStatuses.cie4.has('SUBMITTED') || cieStatuses.cie4.has('APPROVED'),
                     cie5: role === 'LAB' || cieStatuses.cie5.has('SUBMITTED') || cieStatuses.cie5.has('APPROVED'),
                 });
-                setIsLocked(false);
+                // Compute overall lock status from individual CIE statuses
+                const anyCieLocked = Object.values({
+                    cie1: role === 'LAB' || cieStatuses.cie1.has('SUBMITTED') || cieStatuses.cie1.has('APPROVED'),
+                    cie2: role === 'LAB' || cieStatuses.cie2.has('SUBMITTED') || cieStatuses.cie2.has('APPROVED'),
+                    cie3: role === 'THEORY' || cieStatuses.cie3.has('SUBMITTED') || cieStatuses.cie3.has('APPROVED'),
+                    cie4: role === 'THEORY' || cieStatuses.cie4.has('SUBMITTED') || cieStatuses.cie4.has('APPROVED'),
+                    cie5: role === 'LAB' || cieStatuses.cie5.has('SUBMITTED') || cieStatuses.cie5.has('APPROVED'),
+                }).some(v => v);
+                setIsLocked(anyCieLocked);
 
                 setMarks(newMarks);
             }
@@ -1014,11 +1276,8 @@ const FacultyDashboard = () => {
         if (payload.length === 0) return { success: true, message: 'No marks to save' };
 
         try {
-            const token = user?.token;
-            const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) };
-            const response = await fetch(`${API_BASE_URL}/marks/update/batch`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/marks/update/batch`, {
                 method: 'POST',
-                headers,
                 body: JSON.stringify(payload)
             });
 
@@ -1054,7 +1313,13 @@ const FacultyDashboard = () => {
         }
         const cieType = selectedCieType.toUpperCase();
 
-        if (!window.confirm(`Submit ${cieType} marks + attendance to HOD for approval?`)) return;
+        const confirmed = await showConfirm({
+            title: 'Submit for Approval',
+            message: `Submit ${cieType} marks + attendance to HOD for approval?`,
+            variant: 'info',
+            confirmText: 'Submit'
+        });
+        if (!confirmed) return;
 
         setSaving(true);
 
@@ -1067,15 +1332,9 @@ const FacultyDashboard = () => {
         }
 
         try {
-            const token = user?.token;
-            const headers = {
-                'Authorization': `Bearer ${token}`
-            };
-
             // Call Submit Endpoint
-            const res = await fetch(`${API_BASE_URL}/marks/submit?subjectId=${selectedSubject.id}&cieType=${cieType}`, {
-                method: 'POST',
-                headers
+            const res = await authenticatedFetch(`${API_BASE_URL}/marks/submit?subjectId=${selectedSubject.id}&cieType=${cieType}`, {
+                method: 'POST'
             });
 
             if (res.ok) {
@@ -1098,30 +1357,52 @@ const FacultyDashboard = () => {
         showToast('Editing Enabled', 'info');
     };
 
-    const handleEditRequest = () => {
+    const handleEditRequest = async () => {
         if (!selectedSubject) {
-            alert('Please select a subject first');
+            showToast('Please select a subject first', 'error');
             return;
         }
-
-        const reason = prompt(`Why do you need to edit the approved marks for ${selectedSubject.name}?\n\n(This request will be sent to HOD for approval)`);
-
-        if (reason === null) return; // User clicked Cancel
-
-        if (!reason || reason.trim() === '') {
-            alert('Please provide a reason for your edit request');
-            return;
-        }
-
-        // For now, just show a success message
-        // TODO: Implement backend endpoint to notify HOD
-        alert(`Edit request sent to HOD!\n\nSubject: ${selectedSubject.name}\nReason: ${reason}\n\nThe HOD will review your request and unlock the marks if approved.`);
-        showToast('Edit request sent to HOD', 'success');
+        setUnlockReason('');
+        setUnlockSelectedCies([]);
+        setShowUnlockModal(true);
     };
 
+    const submitUnlockRequest = async () => {
+        if (unlockSelectedCies.length === 0) {
+            showToast('Please select at least one CIE to unlock', 'error');
+            return;
+        }
+        if (!unlockReason || unlockReason.trim() === '') {
+            showToast('Please provide a reason for your unlock request', 'error');
+            return;
+        }
+        
+        setSaving(true);
+        try {
+            const cieTypesStr = unlockSelectedCies.join(',');
+            const res = await authenticatedFetch(`${API_BASE_URL}/marks/unlock-request`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    subjectId: selectedSubject.id,
+                    cieTypes: cieTypesStr,
+                    reason: unlockReason.trim()
+                })
+            });
 
-
-
+            if (res.ok) {
+                showToast(`Unlock request sent to HOD for ${cieTypesStr}`, 'success');
+                setShowUnlockModal(false);
+            } else {
+                const err = await res.text();
+                showToast('Failed to send unlock request: ' + err, 'error');
+            }
+        } catch (e) {
+            console.error('Failed to send unlock request', e);
+            showToast('Failed to send unlock request', 'error');
+        } finally {
+            setSaving(false);
+        }
+    };
     const togglePreview = () => {
         setShowPreview(!showPreview);
     };
@@ -1329,13 +1610,8 @@ const FacultyDashboard = () => {
 
         setSaving(true);
         try {
-            const token = user?.token;
-            const response = await fetch(`${API_BASE_URL}/notifications/student`, {
+            const response = await authenticatedFetch(`${API_BASE_URL}/notifications/student`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-                },
                 body: JSON.stringify({
                     studentRegNo: feedbackStudent.regNo,
                     message: feedbackMessage
@@ -1715,21 +1991,32 @@ const FacultyDashboard = () => {
                         <span style={{ fontSize: '0.8rem', color: '#dc2626', fontWeight: 'bold' }}>{facultyClassAnalytics.start || 'Deadline: TBA'}</span>
                     </div>
                     <div className={styles.analyticsContent}>
-                        <div className={styles.statItem}>
-                            <span className={styles.statValue}>{facultyClassAnalytics.totalStudents || (facultyClassAnalytics.evaluated + facultyClassAnalytics.pending)}</span>
-                            <span className={styles.statLabel}><Users size={14} /> Total Students</span>
-                        </div>
-                        <div className={styles.statItem}>
-                            <span className={styles.statValue}>{facultyClassAnalytics.evaluated}</span>
-                            <span className={styles.statLabel}><CheckCircle size={14} /> Evaluated</span>
-                        </div>
-                        <div className={styles.statItem}>
-                            <span className={styles.statValue} style={{ color: facultyClassAnalytics.pending > 0 ? '#ef4444' : 'inherit' }}>
-                                {facultyClassAnalytics.pending > 0 ? <AlertTriangle size={14} color="#ef4444" style={{ marginRight: '4px' }} /> : <Clock size={14} />}
-                                {facultyClassAnalytics.pending}
-                            </span>
-                            <span className={styles.statLabel}>Pending</span>
-                        </div>
+                        {loading ? (
+                            Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className={styles.statItem}>
+                                    <Skeleton width="40px" height="24px" style={{ marginBottom: '4px' }} />
+                                    <Skeleton width="60px" height="12px" />
+                                </div>
+                            ))
+                        ) : (
+                            <>
+                                <div className={styles.statItem}>
+                                    <span className={styles.statValue}>{facultyClassAnalytics.totalStudents || (facultyClassAnalytics.evaluated + facultyClassAnalytics.pending)}</span>
+                                    <span className={styles.statLabel}><Users size={14} /> Total Students</span>
+                                </div>
+                                <div className={styles.statItem}>
+                                    <span className={styles.statValue}>{facultyClassAnalytics.evaluated}</span>
+                                    <span className={styles.statLabel}><CheckCircle size={14} /> Evaluated</span>
+                                </div>
+                                <div className={styles.statItem}>
+                                    <span className={styles.statValue} style={{ color: facultyClassAnalytics.pending > 0 ? '#ef4444' : 'inherit' }}>
+                                        {facultyClassAnalytics.pending > 0 ? <AlertTriangle size={14} color="#ef4444" style={{ marginRight: '4px' }} /> : <Clock size={14} />}
+                                        {facultyClassAnalytics.pending}
+                                    </span>
+                                    <span className={styles.statLabel}>Pending</span>
+                                </div>
+                            </>
+                        )}
                     </div>
                     <div style={{ marginTop: '1rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.3rem', color: '#6b7280' }}>
@@ -1746,18 +2033,29 @@ const FacultyDashboard = () => {
                 <div className={styles.analyticsCard}>
                     <h3 className={styles.analyticsTitle}>CLASS ANALYTICS</h3>
                     <div className={styles.analyticsContent}>
-                        <div className={styles.statItem}>
-                            <span className={styles.statValue}>{facultyClassAnalytics.avgScore}%</span>
-                            <span className={styles.statLabel}><BarChart2 size={14} /> Avg Score</span>
-                        </div>
-                        <div className={styles.statItem}>
-                            <span className={styles.statValue}>{facultyClassAnalytics.lowPerformers}</span>
-                            <span className={styles.statLabel}><TrendingDown size={14} /> Low Performers</span>
-                        </div>
-                        <div className={styles.statItem}>
-                            <span className={styles.statValue}>{facultyClassAnalytics.topPerformers}</span>
-                            <span className={styles.statLabel}><Award size={14} /> Top Performers</span>
-                        </div>
+                        {loading ? (
+                            Array.from({ length: 3 }).map((_, i) => (
+                                <div key={i} className={styles.statItem}>
+                                    <Skeleton width="40px" height="24px" style={{ marginBottom: '4px' }} />
+                                    <Skeleton width="60px" height="12px" />
+                                </div>
+                            ))
+                        ) : (
+                            <>
+                                <div className={styles.statItem}>
+                                    <span className={styles.statValue}>{facultyClassAnalytics.avgScore}%</span>
+                                    <span className={styles.statLabel}><BarChart2 size={14} /> Avg Score</span>
+                                </div>
+                                <div className={styles.statItem}>
+                                    <span className={styles.statValue}>{facultyClassAnalytics.lowPerformers}</span>
+                                    <span className={styles.statLabel}><TrendingDown size={14} /> Low Performers</span>
+                                </div>
+                                <div className={styles.statItem}>
+                                    <span className={styles.statValue}>{facultyClassAnalytics.topPerformers}</span>
+                                    <span className={styles.statLabel}><Award size={14} /> Top Performers</span>
+                                </div>
+                            </>
+                        )}
                     </div>
                     <p style={{ marginTop: '1rem', fontSize: '0.85rem', color: facultyClassAnalytics.avgScore >= 50 ? '#059669' : '#ca8a04', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {facultyClassAnalytics.avgScore >= 50 ? <TrendingDown size={16} style={{ transform: 'rotate(180deg)' }} /> : <AlertTriangle size={14} />} {facultyClassAnalytics.avgScore >= 50 ? 'Good performance — class average above 50%' : 'Class average needs improvement'}
@@ -1791,7 +2089,15 @@ const FacultyDashboard = () => {
                                 }
                                 return (
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem' }}>
-                                        {overviewDepartments.map(dept => (
+                                        {loading ? (
+                                            Array.from({ length: 3 }).map((_, i) => (
+                                                <div key={i} style={{ background: 'white', borderRadius: '16px', padding: '2rem 1.5rem', textAlign: 'center', border: '1px solid #f1f5f9' }}>
+                                                    <Skeleton variant="circle" width="64px" height="64px" style={{ margin: '0 auto 1.5rem auto' }} />
+                                                    <Skeleton width="120px" height="20px" style={{ margin: '0 auto 0.5rem auto' }} />
+                                                    <Skeleton width="80px" height="14px" style={{ margin: '0 auto' }} />
+                                                </div>
+                                            ))
+                                        ) : overviewDepartments.map(dept => (
                                             <div
                                                 key={dept}
                                                 onClick={() => setSelectedOverviewDept(dept)}
@@ -1852,7 +2158,22 @@ const FacultyDashboard = () => {
                             </div>
 
                             <div className={styles.cardsGrid}>
-                                {mySubjects.length > 0 ? mySubjects
+                                {loading ? (
+                                    Array.from({ length: 4 }).map((_, i) => (
+                                        <div key={i} className={styles.subjectCard}>
+                                            <div className={styles.cardHeader}>
+                                                <Skeleton width="150px" height="24px" style={{ marginBottom: '8px' }} />
+                                                <Skeleton width="60px" height="20px" />
+                                            </div>
+                                            <div className={styles.subjectFooter}>
+                                                <Skeleton width="100px" height="16px" />
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <Skeleton width="80px" height="20px" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : mySubjects.length > 0 ? mySubjects
                                     .filter(sub => sub.department === selectedOverviewDept)
                                     .map(sub => (
                                         <div key={sub.id} className={styles.subjectCard} onClick={() => handleSubjectClick(sub)}>
@@ -1892,7 +2213,17 @@ const FacultyDashboard = () => {
                         </div>
 
                         <div className={styles.notificationsList}>
-                            {notifications.length > 0 ? (
+                            {loading ? (
+                                Array.from({ length: 5 }).map((_, i) => (
+                                    <div key={i} className={styles.notifItem}>
+                                        <Skeleton variant="circle" width="32px" height="32px" />
+                                        <div className={styles.notifContent} style={{ flex: 1 }}>
+                                            <Skeleton width="100%" height="14px" style={{ marginBottom: '4px' }} />
+                                            <Skeleton width="60px" height="12px" />
+                                        </div>
+                                    </div>
+                                ))
+                            ) : notifications.length > 0 ? (
                                 notifications.slice(0, 5).map((note, idx) => (
                                     <div key={note.id || idx} className={styles.notifItem}>
                                         <div className={styles.notifIcon} style={{ background: '#eff6ff', color: '#2563eb' }}>
@@ -2108,7 +2439,25 @@ const FacultyDashboard = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredStudents.map((std, index) => {
+                                {loading ? (
+                                    Array.from({ length: 8 }).map((_, i) => (
+                                        <tr key={i}>
+                                            <td style={{ paddingLeft: '1.5rem' }}><Skeleton width="30px" height="16px" /></td>
+                                            <td><Skeleton width="100px" height="16px" /></td>
+                                            <td>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <Skeleton variant="circle" width="32px" height="32px" />
+                                                    <Skeleton width="140px" height="16px" />
+                                                </div>
+                                            </td>
+                                            <td><Skeleton width="80px" height="16px" /></td>
+                                            <td><Skeleton width="40px" height="20px" /></td>
+                                            <td><Skeleton width="100px" height="24px" /></td>
+                                            <td><Skeleton width="80px" height="24px" /></td>
+                                            <td><Skeleton variant="circle" width="32px" height="32px" /></td>
+                                        </tr>
+                                    ))
+                                ) : filteredStudents.map((std, index) => {
                                     // Calculate Real Grade & Status using central helper
                                     const { grade, hasData } = getStudentPerformance(std.id);
 
@@ -2212,7 +2561,7 @@ const FacultyDashboard = () => {
 
             if (cieDepartments.length === 1) {
                 setTimeout(() => setSelectedCieDept(cieDepartments[0]), 0);
-                return <div style={{ textAlign: 'center', padding: '4rem' }}>Loading subjects...</div>;
+                return <div style={{ textAlign: 'center', padding: '4rem' }}>{loading ? <Skeleton width="200px" height="24px" /> : 'Loading subjects...'}</div>;
             }
 
             return (
@@ -2480,41 +2829,48 @@ const FacultyDashboard = () => {
                                 </select>
                             </div>
                         )}
+                        {/* CIE Lock Status Badges */}
+                        {isLocked && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                {['cie1', 'cie2', 'cie3', 'cie4', 'cie5'].map(key => (
+                                    <span key={key} style={{
+                                        fontSize: '0.7rem',
+                                        padding: '2px 8px',
+                                        borderRadius: '10px',
+                                        fontWeight: 600,
+                                        background: cieLockStatus[key] ? '#fef2f2' : '#f0fdf4',
+                                        color: cieLockStatus[key] ? '#dc2626' : '#15803d',
+                                        border: `1px solid ${cieLockStatus[key] ? '#fca5a5' : '#86efac'}`
+                                    }}>
+                                        {cieLockStatus[key] ? '🔒' : '✏️'} {key.replace('cie', 'CIE-')}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className={styles.headerActions}>
                         <div className={styles.actionButtons}>
 
 
-                            <button className={styles.secondaryBtn} onClick={togglePreview} title="Preview Report">
-                                <FileText size={16} /> Preview
+                            <button className={`${styles.saveBtn} ${saving ? styles.saving : ''}`} onClick={handleSave} disabled={saving}>
+                                <Save size={16} />
+                                {saving ? 'Saving...' : 'Save Draft'}
                             </button>
 
-                            {!isLocked ? (
-                                <>
-                                    <button className={`${styles.saveBtn} ${saving ? styles.saving : ''}`} onClick={handleSave} disabled={saving}>
-                                        <Save size={16} />
-                                        {saving ? 'Saving...' : 'Save Draft'}
-                                    </button>
+                            <button className={styles.saveBtn} onClick={handleSubmitForApproval} disabled={saving} style={{ backgroundColor: '#059669' }}>
+                                <CheckCircle size={16} /> Submit to HOD
+                            </button>
 
-                                    <button className={styles.saveBtn} onClick={handleSubmitForApproval} disabled={saving} style={{ backgroundColor: '#059669' }}>
-                                        <CheckCircle size={16} /> Submit to HOD
-                                    </button>
-                                </>
-                            ) : (
-                                <>
-                                    <button className={styles.secondaryBtn} disabled style={{ cursor: 'not-allowed', color: '#6b7280', borderColor: '#d1d5db' }}>
-                                        <Lock size={16} /> Marks Locked
-                                    </button>
-                                    <button
-                                        className={styles.saveBtn}
-                                        onClick={handleEditRequest}
-                                        style={{ backgroundColor: '#f59e0b', color: 'white' }}
-                                        title="Request permission from HOD to edit these marks"
-                                    >
-                                        <Edit size={16} /> Request Edit
-                                    </button>
-                                </>
+                            {isLocked && (
+                                <button
+                                    className={styles.saveBtn}
+                                    onClick={handleEditRequest}
+                                    style={{ backgroundColor: '#f59e0b', color: 'white' }}
+                                    title="Request HOD to unlock approved marks for editing"
+                                >
+                                    <Lock size={16} /> Request Unlock
+                                </button>
                             )}
 
                             <button className={`${styles.saveBtn}`} onClick={downloadCSV} style={{ backgroundColor: '#4b5563' }}>
@@ -2527,9 +2883,9 @@ const FacultyDashboard = () => {
                         </div>
                     </div>
                 </div>
-
-
-
+                <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1rem', background: '#f8fafc', padding: '0.75rem', borderRadius: '0.5rem', borderLeft: '4px solid #3b82f6' }}>
+                    <strong>ℹ️ Max Marks Info:</strong> Each CIE is for <strong>50 marks</strong>. Total Internal marks: <strong>250</strong>. Attendance is recorded as percentage (<strong>0-100%</strong>).
+                </p>
 
                 <div className={styles.card}>
                     <div className={styles.tableContainer}>
@@ -2563,172 +2919,20 @@ const FacultyDashboard = () => {
                                             const facultySectionMatch = facultySections.length === 0 || facultySections.includes(s.section);
                                             return subjectMatch && sectionMatch && facultySectionMatch;
                                         })
-                                        .map((student, index) => {
-                                            const sMarks = marks[student.id] || {};
-                                            const ia1Mark = sMarks['CIE1'] || {};
-
-                                            const valCIE1 = sMarks.cie1 !== undefined ? sMarks.cie1 : (ia1Mark.cie1Score != null ? ia1Mark.cie1Score : '');
-                                            const valCIE2 = sMarks.cie2 !== undefined ? sMarks.cie2 : (ia1Mark.cie2Score != null ? ia1Mark.cie2Score : '');
-                                            const valCIE3 = sMarks.cie3 !== undefined ? sMarks.cie3 : '';
-                                            const valCIE4 = sMarks.cie4 !== undefined ? sMarks.cie4 : '';
-                                            const valCIE5 = sMarks.cie5 !== undefined ? sMarks.cie5 : '';
-
-                                            const renderAttendanceCell = (cieKey) => {
-                                                if (selectedCieType !== cieKey && selectedCieType !== 'all') return null;
-                                                const attField = cieKey + 'Att';
-                                                return (
-                                                    <td style={{ background: '#f0fdf4' }}>
-                                                        <input
-                                                            type="number"
-                                                            className={styles.markInput}
-                                                            value={sMarks[attField] !== undefined ? sMarks[attField] : ''}
-                                                            onChange={(e) => handleMarkChange(student.id, attField, e.target.value)}
-                                                            placeholder=""
-                                                            min="0"
-                                                            max="100"
-                                                            disabled={cieLockStatus[cieKey]}
-                                                            style={{ background: cieLockStatus[cieKey] ? '#e5e7eb' : '#f0fdf4', border: '1px solid #86efac' }}
-                                                        />
-                                                    </td>
-                                                );
-                                            };
-
-                                            return (
-                                                <tr key={student.id}>
-                                                    <td>{index + 1}</td>
-                                                    <td style={{ whiteSpace: 'nowrap' }}>{student.rollNo || student.regNo}</td>
-                                                    <td style={{ whiteSpace: 'nowrap' }}>{student.name}</td>
-                                                    <td style={['cie1', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
-                                                        <input
-                                                            type="number"
-                                                            className={styles.markInput}
-                                                            value={valCIE1}
-                                                            onChange={(e) => handleMarkChange(student.id, 'cie1', e.target.value)}
-                                                            onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie1') }}
-                                                            placeholder=""
-                                                            disabled={cieLockStatus.cie1}
-                                                            style={cieLockStatus.cie1 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
-                                                        />
-                                                    </td>
-                                                    {renderAttendanceCell('cie1')}
-                                                    <td style={['cie2', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
-                                                        <input
-                                                            type="number"
-                                                            className={styles.markInput}
-                                                            value={valCIE2}
-                                                            onChange={(e) => handleMarkChange(student.id, 'cie2', e.target.value)}
-                                                            onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie2') }}
-                                                            placeholder=""
-                                                            disabled={cieLockStatus.cie2}
-                                                            style={cieLockStatus.cie2 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
-                                                        />
-                                                    </td>
-                                                    {renderAttendanceCell('cie2')}
-                                                    <td style={['cie3', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
-                                                        <input
-                                                            type="number"
-                                                            className={styles.markInput}
-                                                            value={valCIE3}
-                                                            onChange={(e) => handleMarkChange(student.id, 'cie3', e.target.value)}
-                                                            onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie3') }}
-                                                            placeholder=""
-                                                            disabled={cieLockStatus.cie3}
-                                                            style={cieLockStatus.cie3 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
-                                                        />
-                                                    </td>
-                                                    {renderAttendanceCell('cie3')}
-                                                    <td style={['cie4', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
-                                                        <input
-                                                            type="number"
-                                                            className={styles.markInput}
-                                                            value={valCIE4}
-                                                            onChange={(e) => handleMarkChange(student.id, 'cie4', e.target.value)}
-                                                            onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie4') }}
-                                                            placeholder=""
-                                                            disabled={cieLockStatus.cie4}
-                                                            style={cieLockStatus.cie4 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
-                                                        />
-                                                    </td>
-                                                    {renderAttendanceCell('cie4')}
-                                                    <td style={['cie5', 'all'].includes(selectedCieType) ? { background: '#eff6ff' } : {}}>
-                                                        <input
-                                                            type="number"
-                                                            className={styles.markInput}
-                                                            value={valCIE5}
-                                                            onChange={(e) => handleMarkChange(student.id, 'cie5', e.target.value)}
-                                                            onFocus={() => { if (selectedCieType !== 'all') setSelectedCieType('cie5') }}
-                                                            placeholder=""
-                                                            disabled={cieLockStatus.cie5}
-                                                            style={cieLockStatus.cie5 ? { background: '#e5e7eb', cursor: 'not-allowed' } : {}}
-                                                        />
-                                                    </td>
-                                                    {renderAttendanceCell('cie5')}
-                                                    <td style={{ fontWeight: 'bold' }}>{calculateAverage(student)}</td>
-                                                    {(() => {
-                                                        const getCieRemark = (key, label) => {
-                                                            const v = sMarks[key] !== undefined && sMarks[key] !== '' ? parseFloat(sMarks[key]) : null;
-                                                            const a = sMarks[key + 'Att'] !== undefined && sMarks[key + 'Att'] !== '' ? parseFloat(sMarks[key + 'Att']) : null;
-                                                            if (v == null || isNaN(v) || a == null || isNaN(a)) return null;
-
-                                                            return {
-                                                                label,
-                                                                lowMarks: v < 25,
-                                                                lowAtt: a < 75,
-                                                                excellent: v >= 40 && a >= 75,
-                                                                severity: (v < 25 && a < 75) ? 3 : (v < 25 ? 2 : (a < 75 ? 2 : 0)),
-                                                                text: (v < 25 && a < 75) ? `${label}: Low Marks, Low Att` :
-                                                                    (v < 25 ? `${label}: Low Marks` :
-                                                                        (a < 75 ? `${label}: Low Att` :
-                                                                            (v >= 40 && a >= 75 ? `${label}: Excellent` : `${label}: Good`)))
-                                                            };
-                                                        };
-                                                        const allCies = [
-                                                            getCieRemark('cie1', 'CIE-1'), getCieRemark('cie2', 'CIE-2'),
-                                                            getCieRemark('cie3', 'CIE-3'), getCieRemark('cie4', 'CIE-4'),
-                                                            getCieRemark('cie5', 'CIE-5')
-                                                        ];
-                                                        const filled = allCies.filter(r => r !== null);
-
-                                                        // If all is selected, show combined remarks for filled ones.
-                                                        if (selectedCieType === 'all' && filled.length > 0) {
-                                                            const worst = Math.max(...filled.map(r => r.severity));
-                                                            const color = worst >= 3 ? '#dc2626' : worst >= 2 ? '#ea580c' : '#15803d';
-                                                            const bg = worst >= 3 ? '#fef2f2' : worst >= 2 ? '#fff7ed' : '#f0fdf4';
-
-                                                            const lowMarksCies = filled.filter(r => r.lowMarks).map(r => r.label);
-                                                            const lowAttCies = filled.filter(r => r.lowAtt).map(r => r.label);
-
-                                                            let textParts = [];
-                                                            if (lowMarksCies.length > 0) {
-                                                                textParts.push(`${lowMarksCies.join(',')} Low Marks`);
-                                                            }
-                                                            if (lowAttCies.length > 0) {
-                                                                textParts.push(`${lowAttCies.join(',')} Low Att`);
-                                                            }
-                                                            if (textParts.length === 0) {
-                                                                const allExcellent = filled.every(r => r.excellent);
-                                                                textParts.push(allExcellent ? 'All Excellent' : 'All Good');
-                                                            }
-                                                            const text = textParts.join(' | ');
-                                                            return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
-                                                                <div style={{ fontSize: '0.65rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{text}</div>
-                                                            </td>;
-                                                        } else if (selectedCieType === 'all' && filled.length === 0) {
-                                                            return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
-                                                        }
-
-                                                        // Otherwise show focused CIE's remark
-                                                        const focused = getCieRemark(selectedCieType, selectedCieType.replace('cie', 'CIE-'));
-                                                        if (!focused) return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
-                                                        const color = focused.severity >= 3 ? '#dc2626' : focused.severity >= 2 ? '#ea580c' : focused.severity === 0 ? '#15803d' : '#2563eb';
-                                                        const bg = focused.severity >= 3 ? '#fef2f2' : focused.severity >= 2 ? '#fff7ed' : '#f0fdf4';
-                                                        return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
-                                                            <div style={{ fontSize: '0.72rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{focused.text}</div>
-                                                        </td>;
-                                                    })()}
-                                                </tr>
-                                            )
-                                        })}
+                                        .map((student, index) => (
+                                            <FacultyStudentRow
+                                                key={student.id}
+                                                student={student}
+                                                index={index}
+                                                marks={marks[student.id] || {}}
+                                                selectedCieType={selectedCieType}
+                                                setSelectedCieType={setSelectedCieType}
+                                                styles={styles}
+                                                handleMarkChange={handleMarkChange}
+                                                cieLockStatus={cieLockStatus}
+                                                calculateAverage={calculateAverage}
+                                            />
+                                        ))}
                                 </tbody>
                             </table>
                         </div>
@@ -3156,45 +3360,49 @@ const FacultyDashboard = () => {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                         <label style={{ fontWeight: 600, color: '#374151', fontSize: '1rem' }}>Subject</label>
-                                        <select
-                                            name="subjectId"
-                                            value={iaConfig.subjectId}
-                                            onChange={handleIaConfigChange}
-                                            className={styles.largeInput}
-                                            style={{ width: '100%' }}
-                                        >
-                                            <option value="">Select Subject</option>
-                                            {mySubjects.map(sub => (
-                                                <option key={sub.id} value={sub.id}>{sub.name} ({sub.code}) - {sub.department}</option>
-                                            ))}
-                                        </select>
+                                        {loading ? <Skeleton width="100%" height="48px" /> : (
+                                            <select
+                                                name="subjectId"
+                                                value={iaConfig.subjectId}
+                                                onChange={handleIaConfigChange}
+                                                className={styles.largeInput}
+                                                style={{ width: '100%' }}
+                                            >
+                                                <option value="">Select Subject</option>
+                                                {mySubjects.map(sub => (
+                                                    <option key={sub.id} value={sub.id}>{sub.name} ({sub.code}) - {sub.department}</option>
+                                                ))}
+                                            </select>
+                                        )}
                                     </div>
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                                         <label style={{ fontWeight: 600, color: '#374151', fontSize: '1rem' }}>CIE Number</label>
-                                        <div style={{ display: 'flex', gap: '0.5rem', background: '#f8fafc', padding: '6px', borderRadius: '10px', border: '1px solid #cbd5e1', height: '100%' }}>
-                                            {['1', '2', '3', '4', '5'].map(num => (
-                                                <button
-                                                    key={num}
-                                                    onClick={() => setIaConfig(prev => ({ ...prev, cieNumber: num }))}
-                                                    style={{
-                                                        flex: 1,
-                                                        padding: '8px',
-                                                        borderRadius: '8px',
-                                                        border: 'none',
-                                                        background: iaConfig.cieNumber === num ? '#2563eb' : 'transparent',
-                                                        color: iaConfig.cieNumber === num ? 'white' : '#64748b',
-                                                        fontWeight: 600,
-                                                        fontSize: '1rem',
-                                                        cursor: 'pointer',
-                                                        transition: 'all 0.2s',
-                                                        boxShadow: iaConfig.cieNumber === num ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none'
-                                                    }}
-                                                >
-                                                    {num}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        {loading ? <Skeleton width="100%" height="48px" /> : (
+                                            <div style={{ display: 'flex', gap: '0.5rem', background: '#f8fafc', padding: '6px', borderRadius: '10px', border: '1px solid #cbd5e1', height: '100%' }}>
+                                                {['1', '2', '3', '4', '5'].map(num => (
+                                                    <button
+                                                        key={num}
+                                                        onClick={() => setIaConfig(prev => ({ ...prev, cieNumber: num }))}
+                                                        style={{
+                                                            flex: 1,
+                                                            padding: '8px',
+                                                            borderRadius: '8px',
+                                                            border: 'none',
+                                                            background: iaConfig.cieNumber === num ? '#2563eb' : 'transparent',
+                                                            color: iaConfig.cieNumber === num ? 'white' : '#64748b',
+                                                            fontWeight: 600,
+                                                            fontSize: '1rem',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.2s',
+                                                            boxShadow: iaConfig.cieNumber === num ? '0 2px 4px rgba(37, 99, 235, 0.2)' : 'none'
+                                                        }}
+                                                    >
+                                                        {num}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -3259,9 +3467,8 @@ const FacultyDashboard = () => {
                                             formData.append('subjectId', iaConfig.subjectId);
                                             formData.append('cieNumber', iaConfig.cieNumber || '1');
                                             try {
-                                                const res = await fetch(`${API_BASE_URL}/cie/faculty/upload-question`, {
+                                                const res = await authenticatedFetch(`${API_BASE_URL}/cie/faculty/upload-question`, {
                                                     method: 'POST',
-                                                    headers: { 'Authorization': `Bearer ${user.token}` },
                                                     body: formData
                                                 });
                                                 if (res.ok) {
@@ -3647,12 +3854,15 @@ const FacultyDashboard = () => {
 
     // Clear Notifications Handler
     const handleClearNotifications = async () => {
-        if (!window.confirm('Are you sure you want to clear all notifications?')) return;
+        const confirmed = await showConfirm({
+            title: 'Clear Notifications',
+            message: 'Are you sure you want to clear all notifications?',
+            variant: 'warning',
+            confirmText: 'Clear All'
+        });
+        if (!confirmed) return;
         try {
-            const token = user?.token;
-            if (!token) return;
-            const headers = { 'Authorization': `Bearer ${token}` };
-            const response = await fetch(`${API_BASE_URL}/notifications/clear`, { method: 'DELETE', headers });
+            const response = await authenticatedFetch(`${API_BASE_URL}/notifications/clear`, { method: 'DELETE' });
             if (response.ok) {
                 setNotifications([]);
                 setUnreadCount(0);
@@ -3668,10 +3878,7 @@ const FacultyDashboard = () => {
 
     const handleDeleteNotification = async (id) => {
         try {
-            const token = user?.token;
-            if (!token) return;
-            const headers = { 'Authorization': `Bearer ${token}` };
-            const response = await fetch(`${API_BASE_URL}/notifications/${id}`, { method: 'DELETE', headers });
+            const response = await authenticatedFetch(`${API_BASE_URL}/notifications/${id}`, { method: 'DELETE' });
             if (response.ok) {
                 setNotifications(prev => prev.filter(n => n.id !== id));
                 setUnreadCount(prev => Math.max(0, prev - 1));
@@ -3745,8 +3952,7 @@ const FacultyDashboard = () => {
     // === DEPARTMENT ASSIGNMENT HELPERS ===
     const fetchAllDepartments = async () => {
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}` };
-            const res = await fetch(`${API_BASE_URL}/faculty/all-departments`, { headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/faculty/all-departments`);
             if (res.ok) {
                 const data = await res.json();
                 setAllDepartments(data);
@@ -3756,8 +3962,7 @@ const FacultyDashboard = () => {
 
     const fetchDeptSubjects = async (dept) => {
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}` };
-            const res = await fetch(`${API_BASE_URL}/faculty/department-subjects?department=${encodeURIComponent(dept)}`, { headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/faculty/department-subjects?department=${encodeURIComponent(dept)}`);
             if (res.ok) {
                 const data = await res.json();
                 setDeptSubjects(data);
@@ -3767,8 +3972,7 @@ const FacultyDashboard = () => {
 
     const fetchAvailableSections = async (dept, sem) => {
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}` };
-            const res = await fetch(`${API_BASE_URL}/faculty/available-sections?department=${encodeURIComponent(dept)}&semester=${encodeURIComponent(sem)}`, { headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/faculty/available-sections?department=${encodeURIComponent(dept)}&semester=${encodeURIComponent(sem)}`);
             if (res.ok) {
                 const data = await res.json();
                 setAvailableSections(Array.isArray(data) && data.length > 0 ? data : []);
@@ -3783,8 +3987,7 @@ const FacultyDashboard = () => {
 
     const fetchMyAssignmentRequests = async () => {
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}` };
-            const res = await fetch(`${API_BASE_URL}/faculty/my-assignment-requests`, { headers });
+            const res = await authenticatedFetch(`${API_BASE_URL}/faculty/my-assignment-requests`);
             if (res.ok) {
                 const data = await res.json();
                 setMyAssignmentRequests(data);
@@ -3793,20 +3996,22 @@ const FacultyDashboard = () => {
     };
 
     const handleSubmitAssignmentRequest = async () => {
-        if (!selectedTargetDept || selectedAssignSubjects.length === 0) {
-            showToast('Please select a department and at least one subject', 'error');
+        if (!selectedTargetDept || selectedAssignSubjects.length === 0 || assignSections.length === 0) {
+            showToast('Please select a department, at least one subject, and at least one section', 'error');
             return;
         }
         setAssignLoading(true);
         try {
-            const headers = { 'Authorization': `Bearer ${user.token}`, 'Content-Type': 'application/json' };
             const body = JSON.stringify({
                 targetDepartment: selectedTargetDept,
                 subjects: selectedAssignSubjects.join(', '),
                 sections: assignSections.join(', '),
                 semester: assignSemester
             });
-            const res = await fetch(`${API_BASE_URL}/faculty/assignment-request`, { method: 'POST', headers, body });
+            const res = await authenticatedFetch(`${API_BASE_URL}/faculty/assignment-request`, {
+                method: 'POST',
+                body
+            });
             const data = await res.json();
             if (res.ok) {
                 showToast(data.message || 'Request submitted!');
@@ -3837,10 +4042,15 @@ const FacultyDashboard = () => {
         const statusBg = { PENDING: '#fef3c7', APPROVED: '#d1fae5', REJECTED: '#fef2f2' };
 
         const handleDeleteRequest = async (id) => {
-            if (!window.confirm('Are you sure you want to delete this request?')) return;
+            const confirmed = await showConfirm({
+                title: 'Delete Request',
+                message: 'Are you sure you want to delete this request?',
+                variant: 'danger',
+                confirmText: 'Delete'
+            });
+            if (!confirmed) return;
             try {
-                const headers = { 'Authorization': `Bearer ${user.token}` };
-                const res = await fetch(`${API_BASE_URL}/faculty/assignment-request/${id}`, { method: 'DELETE', headers });
+                const res = await authenticatedFetch(`${API_BASE_URL}/faculty/assignment-request/${id}`, { method: 'DELETE' });
                 const data = await res.json();
                 if (res.ok) {
                     showToast(data.message || 'Request deleted');
@@ -3867,14 +4077,13 @@ const FacultyDashboard = () => {
             });
             // Fetch subjects for that department
             try {
-                const headers = { 'Authorization': `Bearer ${user.token}` };
-                const subRes = await fetch(`${API_BASE_URL}/faculty/department-subjects?department=${encodeURIComponent(req.targetDepartment)}`, { headers });
+                const subRes = await authenticatedFetch(`${API_BASE_URL}/faculty/department-subjects?department=${encodeURIComponent(req.targetDepartment)}`);
                 if (subRes.ok) {
                     const subData = await subRes.json();
                     setEditingAssignReq(prev => prev ? { ...prev, editSubjects: subData } : prev);
                 }
                 if (req.semester) {
-                    const secRes = await fetch(`${API_BASE_URL}/faculty/available-sections?department=${encodeURIComponent(req.targetDepartment)}&semester=${encodeURIComponent(req.semester)}`, { headers });
+                    const secRes = await authenticatedFetch(`${API_BASE_URL}/faculty/available-sections?department=${encodeURIComponent(req.targetDepartment)}&semester=${encodeURIComponent(req.semester)}`);
                     if (secRes.ok) {
                         const secData = await secRes.json();
                         setEditingAssignReq(prev => prev ? { ...prev, editSections: Array.isArray(secData) ? secData : [] } : prev);
@@ -3885,13 +4094,23 @@ const FacultyDashboard = () => {
 
         const handleSaveEditRequest = async () => {
             if (!editingAssignReq) return;
+
+            if (!editingAssignReq.subjects || editingAssignReq.subjects.length === 0 || !editingAssignReq.sections || editingAssignReq.sections.length === 0) {
+                showToast('Please select at least one subject and at least one section', 'error');
+                return;
+            }
+
             try {
-                const headers = { 'Authorization': `Bearer ${user.token}`, 'Content-Type': 'application/json' };
                 const body = JSON.stringify({
+                    targetDepartment: editingAssignReq.department,
                     subjects: editingAssignReq.subjects.join(', '),
-                    sections: editingAssignReq.sections.join(', ')
+                    sections: editingAssignReq.sections.join(', '),
+                    semester: editingAssignReq.semester
                 });
-                const res = await fetch(`${API_BASE_URL}/faculty/assignment-request/${editingAssignReq.id}`, { method: 'PUT', headers, body });
+                const res = await authenticatedFetch(`${API_BASE_URL}/faculty/assignment-request/${editingAssignReq.id}`, {
+                    method: 'PUT',
+                    body
+                });
                 const data = await res.json();
                 if (res.ok) {
                     showToast(data.message || 'Request updated');
@@ -4055,7 +4274,7 @@ const FacultyDashboard = () => {
                     <button
                         className={styles.saveBtn}
                         onClick={handleSubmitAssignmentRequest}
-                        disabled={assignLoading || !selectedTargetDept || selectedAssignSubjects.length === 0}
+                        disabled={assignLoading || !selectedTargetDept || selectedAssignSubjects.length === 0 || assignSections.length === 0}
                         style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.7rem 1.5rem', fontSize: '0.95rem' }}
                     >
                         <Send size={16} />
@@ -4513,6 +4732,69 @@ const FacultyDashboard = () => {
                 </div>
             )}
 
+
+            {showUnlockModal && (
+                <div className={styles.modalOverlay}>
+                    <div className={styles.modalContent} style={{ maxWidth: '500px' }}>
+                        <div className={styles.modalHeader}>
+                            <h3>Request Unlock from HOD</h3>
+                            <button className={styles.closeBtn} onClick={() => setShowUnlockModal(false)}><X size={24} /></button>
+                        </div>
+                        <div className={styles.modalBody}>
+                            <p style={{ marginBottom: '1rem', color: '#475569' }}>
+                                Select the CIEs you need to unlock for <strong>{selectedSubject?.name}</strong>:
+                            </p>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                                {['CIE1', 'CIE2', 'CIE3', 'CIE4', 'CIE5'].map(cie => {
+                                    const isLocked = cieLockStatus[cie.toLowerCase()];
+                                    return (
+                                        <div key={cie} style={{ 
+                                            padding: '0.75rem', 
+                                            border: '1px solid #e2e8f0', 
+                                            borderRadius: '8px',
+                                            background: isLocked ? '#fff' : '#f8fafc',
+                                            display: 'flex', alignItems: 'center', gap: '8px',
+                                            opacity: isLocked ? 1 : 0.5
+                                        }}>
+                                            <input 
+                                                type="checkbox" 
+                                                id={`unlock-${cie}`}
+                                                disabled={!isLocked}
+                                                checked={unlockSelectedCies.includes(cie)}
+                                                onChange={(e) => {
+                                                    if (e.target.checked) setUnlockSelectedCies(prev => [...prev, cie]);
+                                                    else setUnlockSelectedCies(prev => prev.filter(c => c !== cie));
+                                                }}
+                                                style={{ width: '16px', height: '16px', cursor: isLocked ? 'pointer' : 'not-allowed' }}
+                                            />
+                                            <label htmlFor={`unlock-${cie}`} style={{ cursor: isLocked ? 'pointer' : 'not-allowed', margin: 0, fontWeight: 500 }}>
+                                                {cie.replace('CIE', 'CIE-')}
+                                                {!isLocked && <span style={{ fontSize: '0.7rem', color: '#94a3b8', marginLeft: '6px' }}>(Editable)</span>}
+                                            </label>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className={styles.formGroup}>
+                                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Reason for Unlock *</label>
+                                <textarea 
+                                    value={unlockReason}
+                                    onChange={(e) => setUnlockReason(e.target.value)}
+                                    placeholder="Explain why you need these marks unlocked..."
+                                    className={styles.input}
+                                    style={{ minHeight: '100px', resize: 'vertical', width: '100%' }}
+                                />
+                            </div>
+                        </div>
+                        <div className={styles.modalFooter} style={{ padding: '1.5rem', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '1rem', background: '#f8fafc', borderRadius: '0 0 12px 12px' }}>
+                            <button className={styles.secondaryBtn} onClick={() => setShowUnlockModal(false)}>Cancel</button>
+                            <button className={styles.primaryBtn} onClick={submitUnlockRequest} disabled={saving}>
+                                {saving ? <><Loader.Pulse size={16} /> Sending...</> : 'Send Request'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {renderFeedbackModal()}
             {renderEditStudentModal()}

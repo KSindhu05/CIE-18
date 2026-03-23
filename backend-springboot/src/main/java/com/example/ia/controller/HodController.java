@@ -12,7 +12,10 @@ import com.example.ia.repository.CieMarkRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.example.ia.service.FacultyService;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.example.ia.security.UserDetailsImpl;
 import org.springframework.web.bind.annotation.*;
 
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +35,12 @@ import java.util.stream.Collectors;
 public class HodController {
     @Autowired
     UserRepository userRepository;
+
+    @Autowired
+    FacultyService facultyService;
+
+    @Autowired
+    private com.example.ia.service.StudentService studentService;
 
     @Autowired
     StudentRepository studentRepository;
@@ -54,9 +63,22 @@ public class HodController {
     @Autowired
     FacultyAssignmentRequestRepository assignmentRequestRepository;
 
+    private boolean isAuthorizedForDepartment(String department, UserDetailsImpl userDetails) {
+        if (userDetails == null) return false;
+        // Principal can access any department
+        if (userDetails.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_PRINCIPAL"))) {
+            return true;
+        }
+        // HOD can only access their own department
+        return department != null && department.equalsIgnoreCase(userDetails.getDepartment());
+    }
+
     @GetMapping("/overview")
     @PreAuthorize("hasRole('HOD') or hasRole('PRINCIPAL')")
-    public ResponseEntity<?> getOverview(@RequestParam String department) {
+    public ResponseEntity<?> getOverview(@RequestParam String department, @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        if (!isAuthorizedForDepartment(department, userDetails)) {
+            return ResponseEntity.status(403).body(Map.of("message", "Access denied: You are not authorized for this department."));
+        }
         List<com.example.ia.entity.Student> students = studentRepository.findByDepartment(department);
         List<com.example.ia.entity.Subject> subjects = subjectRepository.findByDepartment(department);
         long facultyCount = userRepository.countByRoleAndDepartment("FACULTY", department);
@@ -242,27 +264,34 @@ public class HodController {
             alerts.add(alert);
         }
 
-        // === Compute aggregate stats ===
+        // === Compute aggregate stats using ONLY completion-based logic ===
+        // Use strict CIE-completed students to calculate true department average and pass rate
+        List<com.example.ia.payload.response.StudentResponse> studentsResp = studentService.getStudentsWithAnalytics(department);
+        long completedStudents = studentsResp.stream().filter(s -> Boolean.TRUE.equals(s.getIsCie1Complete())).count();
+        
         double deptAvg = 0;
         double deptPassRate = 0;
-        int subjectsWithData = 0;
-        for (Map<String, Object> sp : subjectPerfList) {
-            double overall = ((Number) sp.get("overall")).doubleValue();
-            double passRate = ((Number) sp.get("passRate")).doubleValue();
-            if (overall > 0) {
-                deptAvg += overall;
-                deptPassRate += passRate;
-                subjectsWithData++;
-            }
+        
+        if (completedStudents > 0) {
+            deptAvg = studentsResp.stream()
+                    .filter(s -> Boolean.TRUE.equals(s.getIsCie1Complete()))
+                    .mapToDouble(com.example.ia.payload.response.StudentResponse::getOverallCie1Percentage)
+                    .average()
+                    .orElse(0.0);
+            
+            // Pass rate: percentage of completed students with overall percentage >= 40%
+            long passedStudents = studentsResp.stream()
+                    .filter(s -> Boolean.TRUE.equals(s.getIsCie1Complete()))
+                    .filter(s -> s.getOverallCie1Percentage() >= 40.0)
+                    .count();
+            deptPassRate = Math.round((passedStudents * 100.0 / completedStudents) * 10.0) / 10.0;
         }
-        if (subjectsWithData > 0) {
-            deptAvg = Math.round((deptAvg / subjectsWithData) * 10.0) / 10.0;
-            deptPassRate = Math.round((deptPassRate / subjectsWithData) * 10.0) / 10.0;
-        }
+        deptAvg = Math.round(deptAvg * 10.0) / 10.0;
 
         // === Build response ===
         Map<String, Object> data = new HashMap<>();
         data.put("totalStudents", students.size());
+        data.put("completedStudents", completedStudents);
         data.put("facultyCount", facultyCount);
         data.put("cieTrend", cieTrend);
         data.put("subjectPerfList", subjectPerfList);
@@ -277,7 +306,10 @@ public class HodController {
 
     @GetMapping("/faculty")
     @PreAuthorize("hasRole('HOD') or hasRole('PRINCIPAL')")
-    public List<Map<String, Object>> getFaculty(@RequestParam String department) {
+    public ResponseEntity<?> getFaculty(@RequestParam String department, @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        if (!isAuthorizedForDepartment(department, userDetails)) {
+            return ResponseEntity.status(403).body(Map.of("message", "Access denied: You are not authorized for this department."));
+        }
         // Get all subject names belonging to this department
         List<com.example.ia.entity.Subject> deptSubjects = subjectRepository.findByDepartment(department);
         Set<String> deptSubjectNames = deptSubjects.stream()
@@ -352,24 +384,31 @@ public class HodController {
             result.add(facMap);
         }
 
-        return result;
+        return ResponseEntity.ok(result);
     }
 
     // ========== CROSS-DEPARTMENT ASSIGNMENT REQUEST MANAGEMENT ==========
 
-    /**
-     * HOD views pending assignment requests for their department.
-     */
     @GetMapping("/assignment-requests")
     @PreAuthorize("hasRole('HOD')")
-    public ResponseEntity<List<FacultyAssignmentRequest>> getAssignmentRequests(
+    public ResponseEntity<?> getAssignmentRequests(
             @RequestParam String department,
-            @RequestParam(required = false, defaultValue = "PENDING") String status) {
+            @RequestParam(required = false, defaultValue = "PENDING") String status,
+            @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        if (!isAuthorizedForDepartment(department, userDetails)) {
+            return ResponseEntity.status(403).body(Map.of("message", "Access denied: You are not authorized for this department."));
+        }
         List<FacultyAssignmentRequest> requests;
         if ("ALL".equalsIgnoreCase(status)) {
-            requests = assignmentRequestRepository.findByTargetDepartment(department);
+            requests = assignmentRequestRepository.findByTargetDepartment(department)
+                    .stream()
+                    .filter(r -> "PENDING".equals(r.getStatus()) || !r.isHidden())
+                    .collect(Collectors.toList());
         } else {
-            requests = assignmentRequestRepository.findByTargetDepartmentAndStatus(department, status);
+            requests = assignmentRequestRepository.findByTargetDepartmentAndStatus(department, status)
+                    .stream()
+                    .filter(r -> "PENDING".equals(r.getStatus()) || !r.isHidden())
+                    .collect(Collectors.toList());
         }
         return ResponseEntity.ok(requests);
     }
@@ -441,12 +480,52 @@ public class HodController {
         }
     }
 
+    /**
+     * HOD clears the processed (Approved or Rejected) assignment requests history.
+     */
+    @DeleteMapping("/assignment-requests/clear")
+    @CrossOrigin
+    @PreAuthorize("hasRole('HOD')")
+    @Transactional
+    public ResponseEntity<?> clearAssignmentRequestHistory(@RequestParam String department, @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        if (!isAuthorizedForDepartment(department, userDetails)) {
+            return ResponseEntity.status(403).body(Map.of("message", "Access denied: You are not authorized for this department."));
+        }
+        try {
+            List<String> statuses = Arrays.asList("APPROVED", "REJECTED");
+            List<FacultyAssignmentRequest> requests = assignmentRequestRepository
+                    .findByTargetDepartmentAndStatusIn(department, statuses);
+
+            int hiddenCount = 0;
+            for (FacultyAssignmentRequest req : requests) {
+                if (!req.isHidden()) {
+                    req.setHidden(true);
+                    assignmentRequestRepository.save(req);
+                    hiddenCount++;
+                }
+            }
+            return ResponseEntity.ok(Map.of("message", "Cleared " + hiddenCount + " processed requests from history"));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("message", "Error clearing history: " + e.getMessage()));
+        }
+    }
+
     @PostMapping("/faculty")
     @PreAuthorize("hasRole('HOD')")
-    public ResponseEntity<?> createFaculty(@RequestBody User facultyData) {
+    public ResponseEntity<?> createFaculty(@RequestBody User facultyData, @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        // Enforce HOD's department
+        facultyData.setDepartment(userDetails.getDepartment());
+        
         if (userRepository.existsByUsername(facultyData.getUsername())) {
             return ResponseEntity.badRequest().body(Map.of("message", "Username already exists"));
         }
+
+        String conflictMsg = facultyService.validateSubjectSectionAvailability(
+                facultyData.getDepartment(), facultyData.getSubjects(), facultyData.getSection(), null);
+        if (conflictMsg != null) {
+            return ResponseEntity.badRequest().body(Map.of("message", conflictMsg));
+        }
+
         User faculty = new User();
         faculty.setUsername(facultyData.getUsername());
         faculty.setFullName(facultyData.getFullName());
@@ -466,8 +545,16 @@ public class HodController {
 
     @PutMapping("/faculty/{id}")
     @PreAuthorize("hasRole('HOD')")
-    public ResponseEntity<?> updateFaculty(@PathVariable Long id, @RequestBody User facultyData) {
+    public ResponseEntity<?> updateFaculty(@PathVariable Long id, @RequestBody User facultyData, @AuthenticationPrincipal UserDetailsImpl userDetails) {
         return userRepository.findById(id).map(faculty -> {
+            // Ensure faculty belongs to HOD's department
+            if (!userDetails.getDepartment().equalsIgnoreCase(faculty.getDepartment())) {
+                return ResponseEntity.status(403).body(Map.of("message", "Access denied: You can only update faculty in your department."));
+            }
+            // Logic to prevent moving faculty to another department unless authorized (HODs can't move them out)
+            if (facultyData.getDepartment() != null && !facultyData.getDepartment().equalsIgnoreCase(userDetails.getDepartment())) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Cannot move faculty to another department."));
+            }
             // Username change — only if provided and not taken by someone else
             if (facultyData.getUsername() != null && !facultyData.getUsername().isBlank()) {
                 String newUsername = facultyData.getUsername().trim();
@@ -500,6 +587,13 @@ public class HodController {
                 String role = facultyData.getCieRole().isBlank() ? null : facultyData.getCieRole();
                 faculty.setCieRole(role);
             }
+
+            String conflictMsg = facultyService.validateSubjectSectionAvailability(
+                    faculty.getDepartment(), faculty.getSubjects(), faculty.getSection(), faculty.getId());
+            if (conflictMsg != null) {
+                return ResponseEntity.badRequest().body(Map.of("message", conflictMsg));
+            }
+
             userRepository.save(faculty);
             return ResponseEntity.ok(faculty);
         }).orElse(ResponseEntity.notFound().build());
@@ -508,7 +602,10 @@ public class HodController {
     @DeleteMapping("/faculty/{id}")
     @PreAuthorize("hasRole('HOD')")
     @Transactional
-    public ResponseEntity<?> deleteFaculty(@PathVariable Long id, @RequestParam String department) {
+    public ResponseEntity<?> deleteFaculty(@PathVariable Long id, @RequestParam String department, @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        if (!isAuthorizedForDepartment(department, userDetails)) {
+            return ResponseEntity.status(403).body(Map.of("message", "Access denied: You are not authorized for this department."));
+        }
         return userRepository.findById(id).map(faculty -> {
             boolean isHomeDept = department.equals(faculty.getDepartment());
 
@@ -564,10 +661,11 @@ public class HodController {
 
     @PostMapping("/students")
     @PreAuthorize("hasRole('HOD')")
-    public ResponseEntity<?> createStudent(@RequestBody Map<String, String> data) {
+    public ResponseEntity<?> createStudent(@RequestBody Map<String, String> data, @AuthenticationPrincipal UserDetailsImpl userDetails) {
         String regNo = data.get("regNo");
         String name = data.get("name");
-        String department = data.get("department");
+        // Enforce HOD's department
+        String department = userDetails.getDepartment();
         String semester = data.getOrDefault("semester", "1");
         String section = data.getOrDefault("section", "A");
         String email = data.getOrDefault("email", "");
@@ -627,8 +725,12 @@ public class HodController {
     @PutMapping("/students/{regNo}")
     @PreAuthorize("hasRole('HOD')")
     @Transactional
-    public ResponseEntity<?> updateStudent(@PathVariable String regNo, @RequestBody Map<String, String> data) {
+    public ResponseEntity<?> updateStudent(@PathVariable String regNo, @RequestBody Map<String, String> data, @AuthenticationPrincipal UserDetailsImpl userDetails) {
         return studentRepository.findByRegNo(regNo).map(student -> {
+            // Ensure student belongs to HOD's department
+            if (!userDetails.getDepartment().equalsIgnoreCase(student.getDepartment())) {
+                return ResponseEntity.status(403).body(Map.of("message", "Access denied: You can only update students in your department."));
+            }
             // Find corresponding User
             User user = userRepository.findByUsernameIgnoreCase(regNo).orElse(null);
 
@@ -670,11 +772,15 @@ public class HodController {
     @DeleteMapping("/students/{regNo}")
     @PreAuthorize("hasRole('HOD')")
     @org.springframework.transaction.annotation.Transactional
-    public ResponseEntity<?> deleteStudent(@PathVariable String regNo) {
+    public ResponseEntity<?> deleteStudent(@PathVariable String regNo, @AuthenticationPrincipal UserDetailsImpl userDetails) {
         // 1. Find Student Entity
         var studentOpt = studentRepository.findByRegNo(regNo);
         if (studentOpt.isPresent()) {
             com.example.ia.entity.Student student = studentOpt.get();
+            // Ensure student belongs to HOD's department
+            if (!userDetails.getDepartment().equalsIgnoreCase(student.getDepartment())) {
+                return ResponseEntity.status(403).body(Map.of("message", "Access denied: You can only delete students in your department."));
+            }
             // Delete dependent data for Student
             java.util.List<com.example.ia.entity.CieMark> marks = cieMarkRepository.findByStudent_Id(student.getId());
             if (!marks.isEmpty())
@@ -737,7 +843,11 @@ public class HodController {
     @PostMapping("/students/upload")
     @PreAuthorize("hasRole('HOD')")
     public ResponseEntity<?> uploadStudents(@RequestParam("file") org.springframework.web.multipart.MultipartFile file,
-            @RequestParam("department") String department) {
+            @RequestParam("department") String requestDept, @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        
+        // Enforce HOD's actual department
+        String department = userDetails.getDepartment();
+
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Please select a CSV file to upload."));
         }
@@ -879,7 +989,7 @@ public class HodController {
     @DeleteMapping("/students/bulk")
     @PreAuthorize("hasRole('HOD')")
     @org.springframework.transaction.annotation.Transactional
-    public ResponseEntity<?> deleteStudentsBulk(@RequestBody List<String> regNos) {
+    public ResponseEntity<?> deleteStudentsBulk(@RequestBody List<String> regNos, @AuthenticationPrincipal UserDetailsImpl userDetails) {
         if (regNos == null || regNos.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "No students selected"));
         }
@@ -890,6 +1000,10 @@ public class HodController {
             var studentOpt = studentRepository.findByRegNo(regNo);
             if (studentOpt.isPresent()) {
                 com.example.ia.entity.Student student = studentOpt.get();
+                // Ensure student belongs to HOD's department
+                if (!userDetails.getDepartment().equalsIgnoreCase(student.getDepartment())) {
+                    continue; // Skip students from other departments
+                }
                 // Delete dependent data
                 java.util.List<com.example.ia.entity.CieMark> marks = cieMarkRepository
                         .findByStudent_Id(student.getId());

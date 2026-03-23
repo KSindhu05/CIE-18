@@ -52,13 +52,11 @@ public class WebSecurityConfig {
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(
                         (request, response, authException) -> response.sendError(401, "Unauthorized")))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth.requestMatchers("/api/auth/**").permitAll()
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/api/debug/**").permitAll()
-                        .requestMatchers("/api/notifications/broadcast").permitAll() // TEMPORARY FIX: Allow broadcast
-                                                                                     // without auth check to bypass 401
-                        .requestMatchers("/api/cie/**").permitAll() // TEMPORARY FIX: Allow ALL CIE endpoints
-                                                                    // without auth check
                         .anyRequest().authenticated());
 
         http.authenticationProvider(authenticationProvider());

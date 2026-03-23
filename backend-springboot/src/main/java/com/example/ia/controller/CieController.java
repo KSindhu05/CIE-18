@@ -248,6 +248,7 @@ public class CieController {
     // ========== DOWNLOAD QUESTION PAPER ==========
 
     @GetMapping("/download/{filename:.+}")
+    @PreAuthorize("hasRole('FACULTY') or hasRole('HOD') or hasRole('PRINCIPAL') or hasRole('STUDENT')")
     public ResponseEntity<Resource> downloadQuestionPaper(
             @PathVariable String filename,
             @RequestParam(required = false, defaultValue = "false") boolean view) {
@@ -307,19 +308,13 @@ public class CieController {
     // ========== HOD/PRINCIPAL CREATE ANNOUNCEMENTS ==========
 
     @PostMapping("/announcements")
+    @PreAuthorize("hasRole('HOD') or hasRole('PRINCIPAL')")
     public ResponseEntity<?> createAnnouncement(@RequestBody Map<String, Object> data) {
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
         Long subjectId = Long.valueOf(data.get("subjectId").toString());
 
         System.out.println(
                 "CIE Announcement Request: User=" + username + ", SubjectId=" + subjectId + ", Data=" + data);
-
-        if ("anonymousUser".equals(username) || username == null) {
-            if (data.containsKey("senderId")) {
-                username = data.get("senderId").toString();
-                System.out.println("Auth failed, using senderId from body: " + username);
-            }
-        }
 
         User creator = userRepository.findByUsernameIgnoreCase(username).orElse(null);
         Subject subject = subjectRepository.findById(subjectId).orElse(null);

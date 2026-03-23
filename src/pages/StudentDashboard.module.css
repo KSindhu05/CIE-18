@@ -844,36 +844,210 @@ body.dark-mode .table tr:nth-child(even) {
 
 @media (max-width: 768px) {
     .dashboardContainer {
-        padding: 1.25rem;
+        padding: 1rem;
+        padding-top: 0.5rem;
     }
 
     .header {
         flex-direction: column;
         align-items: flex-start;
-        gap: 0.75rem;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+        padding-bottom: 1rem;
     }
 
     .welcomeText {
-        font-size: 1.4rem;
+        font-size: 1.25rem;
+        word-break: break-word;
+        white-space: normal;
+    }
+
+    .typewriter {
+        white-space: normal;
+        border-right: none;
+        animation: none;
+    }
+
+    .subtitle {
+        font-size: 0.82rem;
     }
 
     .summaryGrid {
         grid-template-columns: 1fr 1fr;
-        gap: 0.85rem;
+        gap: 0.75rem;
     }
 
     .summaryCard {
-        padding: 1.15rem;
+        padding: 1rem;
+    }
+
+    .summaryIcon {
+        width: 40px;
+        height: 40px;
+        font-size: 1.1rem;
     }
 
     .summaryValue {
-        font-size: 1.3rem;
+        font-size: 1.2rem;
+    }
+
+    .summaryLabel {
+        font-size: 0.7rem;
+    }
+
+    /* Table mobile fixes */
+    .tableContainer {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -0.5rem;
+        padding: 0 0.5rem;
+    }
+
+    .table {
+        min-width: 500px;
+    }
+
+    .table th {
+        font-size: 0.72rem;
+        white-space: nowrap;
+        padding: 0.6rem 0.5rem;
+    }
+
+    .table td {
+        padding: 0.6rem 0.5rem;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+
+    .subjectCell {
+        min-width: 110px;
+        white-space: normal !important;
+    }
+
+    /* Card adjustments */
+    .card {
+        padding: 1rem;
+        margin-bottom: 1rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .cardTitle {
+        font-size: 0.9rem;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        white-space: normal;
+    }
+
+    .cardHeader {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+
+    /* Content grid */
+    .contentGrid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    /* Exam list */
+    .examItem {
+        padding: 0.75rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .examSubject {
+        font-size: 0.85rem;
+    }
+
+    /* Faculty grid */
+    .facultyGrid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+
+    .facultyCard {
+        padding: 1.25rem;
+    }
+
+    /* Attendance grid */
+    .attendanceGrid {
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    /* Search & filter */
+    .searchInput {
+        width: 100%;
+        font-size: 0.85rem;
+    }
+
+    .searchInput:focus {
+        width: 100%;
+    }
+
+    .filterSelect {
+        min-width: 120px;
+        font-size: 0.85rem;
+    }
+
+    .selectionRow {
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.75rem;
+    }
+
+    .selectionGroup {
+        width: 100%;
+    }
+
+    .selectInput {
+        flex: 1;
+        font-size: 0.85rem;
+    }
+
+    /* Notification panel */
+    .notificationPanel {
+        width: 100%;
+        right: 0;
+        left: 0;
+    }
+
+    /* Insights */
+    .insightsCard {
+        padding: 1.25rem;
+    }
+
+    .insightItem {
+        padding: 0.75rem;
+    }
+
+    /* Toast */
+    .toast {
+        left: 1rem;
+        right: 1rem;
+        bottom: 1rem;
     }
 }
 
 @media (max-width: 480px) {
+    .dashboardContainer {
+        padding: 0.75rem;
+        padding-top: 0.5rem;
+    }
+
     .summaryGrid {
         grid-template-columns: 1fr;
+    }
+
+    .attendanceGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .welcomeText {
+        font-size: 1.1rem;
     }
 }
 

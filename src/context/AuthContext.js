@@ -4,16 +4,14 @@ import API_BASE_URL from '../config/api';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(() => {
+        const storedUser = localStorage.getItem('user');
+        return storedUser ? JSON.parse(storedUser) : null;
+    });
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        // Check local storage for existing session
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
-        }
-        setLoading(false);
+        // Validation/Health check if needed in background
     }, []);
 
     const login = async (username, password) => {
@@ -102,6 +100,11 @@ export const AuthProvider = ({ children }) => {
     const logout = () => {
         setUser(null);
         localStorage.removeItem('user');
+        // Clear persisted dashboard states so next login starts on Overview
+        sessionStorage.removeItem('studentActiveSection');
+        sessionStorage.removeItem('facultyActiveSection');
+        sessionStorage.removeItem('hodActiveTab');
+        sessionStorage.removeItem('principalActiveTab');
     };
 
     return (

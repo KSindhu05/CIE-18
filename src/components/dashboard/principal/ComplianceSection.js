@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback, memo } from 'react';
 import { Bell } from 'lucide-react';
 import styles from '../../../pages/PrincipalDashboard.module.css';
+import Skeleton from '../../ui/Skeleton';
 
 const determineColor = (val) => {
     if (val >= 90) return '#16a34a';
@@ -8,7 +9,7 @@ const determineColor = (val) => {
     return '#ef4444';
 };
 
-const ComplianceSection = memo(({ hodSubmissionStatus = [] }) => {
+const ComplianceSection = memo(({ hodSubmissionStatus = [], loading }) => {
     const [filter, setFilter] = useState('All');
     const [showModal, setShowModal] = useState(false);
     const [selectedDeptDetails, setSelectedDeptDetails] = useState(null);
@@ -68,7 +69,27 @@ const ComplianceSection = memo(({ hodSubmissionStatus = [] }) => {
                         </tr>
                     </thead>
                     <tbody>
-                        {filteredData.map((item) => (
+                        {loading ? (
+                            [1, 2, 3, 4, 5].map(i => (
+                                <tr key={i}>
+                                    <td><Skeleton width="100px" height="14px" /></td>
+                                    <td><Skeleton width="120px" height="14px" /></td>
+                                    <td><Skeleton width="80px" height="20px" style={{ borderRadius: '12px' }} /></td>
+                                    <td><Skeleton width="80px" height="14px" /></td>
+                                    <td><Skeleton width="100px" height="14px" /></td>
+                                    <td><Skeleton width="60px" height="14px" /></td>
+                                    <td>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <Skeleton width="50px" height="6px" />
+                                            <Skeleton width="30px" height="14px" />
+                                        </div>
+                                    </td>
+                                    <td><Skeleton width="60px" height="18px" /></td>
+                                    <td><Skeleton width="150px" height="14px" /></td>
+                                    <td><Skeleton width="50px" height="24px" /></td>
+                                </tr>
+                            ))
+                        ) : filteredData.map((item) => (
                             <tr key={item.id}>
                                 <td style={{ fontWeight: 600 }}>{item.dept}</td>
                                 <td>{item.hod}</td>

@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Lightbulb, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import styles from '../../../pages/StudentDashboard.module.css';
+import Skeleton from '../../ui/Skeleton';
 
 const containerVariants = {
     hidden: { opacity: 0 },
@@ -23,8 +24,8 @@ const itemVariants = {
     },
 };
 
-const AcademicInsights = ({ realMarks }) => {
-    if (!realMarks || realMarks.length === 0) return null;
+const AcademicInsights = ({ realMarks, loading = false }) => {
+    if (!loading && (!realMarks || realMarks.length === 0)) return null;
 
     const bestSubject = [...realMarks].sort((a, b) => b.totalScore - a.totalScore)[0];
     const worstSubject = [...realMarks].sort((a, b) => a.totalScore - b.totalScore)[0];
@@ -54,34 +55,48 @@ const AcademicInsights = ({ realMarks }) => {
                 initial="hidden"
                 animate="visible"
             >
-                {/* Strength */}
-                <motion.div
-                    className={styles.insightItem}
-                    variants={itemVariants}
-                    whileHover={{ x: 6, transition: { duration: 0.2 } }}
-                >
-                    <div className={styles.insightIndicator} style={{ background: 'var(--success)' }}></div>
-                    <div className={styles.insightContent}>
-                        <h4>Strongest Subject</h4>
-                        <p>You are excelling in <strong>{bestSubject?.name}</strong> with a score of {bestSubject?.totalScore}/250.</p>
-                    </div>
-                    <ArrowUpRight size={18} color="var(--success)" />
-                </motion.div>
-
-                {/* Weakness */}
-                {worstSubject && worstSubject.totalScore < 175 && (
-                    <motion.div
-                        className={styles.insightItem}
-                        variants={itemVariants}
-                        whileHover={{ x: 6, transition: { duration: 0.2 } }}
-                    >
-                        <div className={styles.insightIndicator} style={{ background: 'var(--danger)' }}></div>
-                        <div className={styles.insightContent}>
-                            <h4>Focus Area</h4>
-                            <p>Consider reviewing <strong>{worstSubject?.name}</strong> to improve your score ({worstSubject?.totalScore}/250).</p>
+                {loading ? (
+                    Array.from({ length: 2 }).map((_, i) => (
+                        <div key={i} className={styles.insightItem}>
+                            <div className={styles.insightIndicator} style={{ background: '#e2e8f0' }}></div>
+                            <div className={styles.insightContent}>
+                                <Skeleton width="100px" height="16px" style={{ marginBottom: '0.5rem' }} />
+                                <Skeleton width="200px" height="14px" />
+                            </div>
                         </div>
-                        <ArrowDownRight size={18} color="var(--danger)" />
-                    </motion.div>
+                    ))
+                ) : (
+                    <>
+                        {/* Strength */}
+                        <motion.div
+                            className={styles.insightItem}
+                            variants={itemVariants}
+                            whileHover={{ x: 6, transition: { duration: 0.2 } }}
+                        >
+                            <div className={styles.insightIndicator} style={{ background: 'var(--success)' }}></div>
+                            <div className={styles.insightContent}>
+                                <h4>Strongest Subject</h4>
+                                <p>You are excelling in <strong>{bestSubject?.name}</strong> with a score of {bestSubject?.totalScore}/250.</p>
+                            </div>
+                            <ArrowUpRight size={18} color="var(--success)" />
+                        </motion.div>
+
+                        {/* Weakness */}
+                        {worstSubject && worstSubject.totalScore < 175 && (
+                            <motion.div
+                                className={styles.insightItem}
+                                variants={itemVariants}
+                                whileHover={{ x: 6, transition: { duration: 0.2 } }}
+                            >
+                                <div className={styles.insightIndicator} style={{ background: 'var(--danger)' }}></div>
+                                <div className={styles.insightContent}>
+                                    <h4>Focus Area</h4>
+                                    <p>Consider reviewing <strong>{worstSubject?.name}</strong> to improve your score ({worstSubject?.totalScore}/250).</p>
+                                </div>
+                                <ArrowDownRight size={18} color="var(--danger)" />
+                            </motion.div>
+                        )}
+                    </>
                 )}
             </motion.div>
         </motion.div>

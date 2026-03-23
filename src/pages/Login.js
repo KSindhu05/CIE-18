@@ -177,12 +177,6 @@ const Login = () => {
                 </h1>
             </div>
 
-            {/* Team Member Ticker */}
-            <div className={styles.tickerContainer}>
-                <div className={styles.tickerContent}>
-                    This project CIA MANAGEMENT SYSTEM has been done by K Sindhu, M Priyanka, V Akshaya, Amrutha, Gouthami, Chandana, Arshiya, Tasmiya
-                </div>
-            </div>
 
             <div className={styles.contentWrapper}>
                 {/* Left Side - Animated Text */}
@@ -198,111 +192,107 @@ const Login = () => {
                             {typedText}<span className={styles.cursor}>|</span>
                         </p>
                     </div>
-
-                    {!isStarted && (
-                        <button
-                            className={styles.getStartedButton}
-                            onClick={() => setIsStarted(true)}
-                        >
-                            Get Started <ArrowRight size={20} />
-                        </button>
-                    )}
                 </div>
 
-                {/* Right Side - Login Card (Slide in when isStarted is true) */}
-                <div
-                    className={`${styles.rightContent} ${isStarted ? styles.showLogin : ''}`}
-                >
-                    {isStarted && (
-                        <div className={styles.loginCard}>
-                            <div className={styles.header}>
-                                <img src={headerLogo} alt="College Logo" className={styles.formLogo} />
-                                <h2 className={styles.loginTitle}>Welcome Back!</h2>
-                                <p className={styles.subtitle}>Sign in to continue</p>
-                            </div>
+                {/* Right Side - Login Card */}
+                <div className={styles.rightContent}>
+                    <div className={styles.loginCard}>
+                        <div className={styles.header}>
+                            <img src={headerLogo} alt="College Logo" className={styles.formLogo} />
+                            <h2 className={styles.loginTitle}>Welcome Back!</h2>
+                            <p className={styles.subtitle}>Sign in to continue</p>
+                        </div>
 
-                            <form onSubmit={handleSubmit} className={styles.form}>
-                                <div className={styles.inputGroup}>
-                                    <label htmlFor="userId">User ID</label>
-                                    <div className={styles.inputWrapper}>
-                                        <User className={styles.icon} size={20} />
-                                        <input
-                                            type="text"
-                                            id="userId"
-                                            placeholder="Enter UserID"
-                                            value={userId}
-                                            onChange={(e) => setUserId(e.target.value)}
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className={styles.inputGroup}>
-                                    <label htmlFor="password">Password</label>
-                                    <div className={styles.inputWrapper} style={{ position: 'relative' }}>
-                                        <Lock className={styles.icon} size={20} />
-                                        <input
-                                            type={showPassword ? 'text' : 'password'}
-                                            id="password"
-                                            placeholder="Enter Password"
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                            required
-                                            style={{ paddingRight: '2.5rem' }}
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword(p => !p)}
-                                            style={{
-                                                position: 'absolute', right: '12px', top: '50%',
-                                                transform: 'translateY(-50%)', background: 'none',
-                                                border: 'none', cursor: 'pointer', color: '#94a3b8',
-                                                display: 'flex', alignItems: 'center', padding: 0
-                                            }}
-                                            title={showPassword ? 'Hide password' : 'Show password'}
-                                        >
-                                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {error && <div className={styles.error}>{error}</div>}
-
-                                <button type="submit" className={styles.loginButton} disabled={isLoading}>
-                                    {isLoading ? (
-                                        <>
-                                            <div className={styles.spinner}></div>
-                                            Processing...
-                                        </>
-                                    ) : (
-                                        <>
-                                            Login <ArrowRight size={20} />
-                                        </>
-                                    )}
-                                </button>
-                            </form>
-
-                            {/* Role Icons */}
-                            <div className={styles.rolesSection}>
-                                <p className={styles.rolesTitle}>Single login system with role-based dashboards</p>
-                                <div className={styles.roleIcons}>
-                                    <div className={styles.roleItem} title="Student">🎓 <span>Student</span></div>
-                                    <div className={styles.roleItem} title="Faculty">👨‍🏫 <span>Faculty</span></div>
-                                    <div className={styles.roleItem} title="HOD">🧑‍💼 <span>HOD</span></div>
-                                    <div className={styles.roleItem} title="Principal">👨‍💼 <span>Principal</span></div>
+                        <form onSubmit={handleSubmit} className={styles.form}>
+                            <div className={styles.inputGroup}>
+                                <label htmlFor="userId">User ID</label>
+                                <div className={styles.inputWrapper}>
+                                    <User className={styles.icon} size={20} />
+                                    <input
+                                        type="text"
+                                        id="userId"
+                                        placeholder="Enter UserID"
+                                        value={userId}
+                                        onChange={(e) => setUserId(e.target.value)}
+                                        required
+                                    />
                                 </div>
                             </div>
 
-                            <div className={styles.footer}>
-                                <div className={styles.securityNote}>
-                                    🔒 Secure Role-Based Authentication
+                            <div className={styles.inputGroup}>
+                                <label htmlFor="password">Password</label>
+                                <div className={styles.inputWrapper} style={{ position: 'relative' }}>
+                                    <Lock className={styles.icon} size={20} />
+                                    <input
+                                        type={showPassword ? 'text' : 'password'}
+                                        id="password"
+                                        placeholder="Enter Password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        required
+                                        style={{ paddingRight: '2.5rem' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(p => !p)}
+                                        style={{
+                                            position: 'absolute', right: '12px', top: '50%',
+                                            transform: 'translateY(-50%)', background: 'none',
+                                            border: 'none', cursor: 'pointer', color: '#94a3b8',
+                                            display: 'flex', alignItems: 'center', padding: 0
+                                        }}
+                                        title={showPassword ? 'Hide password' : 'Show password'}
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
                                 </div>
-                                <div className={styles.copyRight}>
-                                    © 2026 Sanjay Gandhi Polytechnic | CIA Management System
+                                <div style={{ textAlign: 'right', marginTop: '0.5rem' }}>
+                                    <a
+                                        href="/forgot-password"
+                                        onClick={(e) => { e.preventDefault(); navigate('/forgot-password'); }}
+                                        style={{ fontSize: '0.8rem', color: 'var(--accent-color)', textDecoration: 'none', fontWeight: 600 }}
+                                    >
+                                        Forgot Password?
+                                    </a>
                                 </div>
+                            </div>
+
+                            {error && <div className={styles.error}>{error}</div>}
+
+                            <button type="submit" className={styles.loginButton} disabled={isLoading}>
+                                {isLoading ? (
+                                    <>
+                                        <div className={styles.spinner}></div>
+                                        Processing...
+                                    </>
+                                ) : (
+                                    <>
+                                        Login <ArrowRight size={20} />
+                                    </>
+                                )}
+                            </button>
+                        </form>
+
+                        {/* Role Icons */}
+                        <div className={styles.rolesSection}>
+                            <p className={styles.rolesTitle}>Single login system with role-based dashboards</p>
+                            <div className={styles.roleIcons}>
+                                <div className={styles.roleItem} title="Student">🎓 <span>Student</span></div>
+                                <div className={styles.roleItem} title="Faculty">👨‍🏫 <span>Faculty</span></div>
+                                <div className={styles.roleItem} title="HOD">🧑‍💼 <span>HOD</span></div>
+                                <div className={styles.roleItem} title="Principal">👨‍💼 <span>Principal</span></div>
                             </div>
                         </div>
-                    )}
+
+                        <div className={styles.footer}>
+                            <div className={styles.securityNote}>
+                                🔒 Secure Role-Based Authentication
+                            </div>
+                            <div className={styles.copyRight}>
+                                © 2026 Sanjay Gandhi Polytechnic | CIA Management System
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

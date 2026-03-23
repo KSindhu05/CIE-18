@@ -2,9 +2,13 @@ import React, { useState, useMemo, memo } from 'react';
 import { X, Search, Filter, Download, AlertTriangle, CheckCircle, Clock, ArrowLeft } from 'lucide-react';
 import styles from '../../../pages/PrincipalDashboard.module.css';
 import { useAuth } from '../../../context/AuthContext';
+import authenticatedFetch from '../../../utils/authFetch';
 import API_BASE_URL from '../../../config/api';
+import Skeleton from '../../ui/Skeleton';
 
-const StudentProfileModal = ({ selectedStudentProfile, setSelectedStudentProfile, selectedDept }) => {
+export const StudentProfileModal = ({ selectedStudentProfile, setSelectedStudentProfile, selectedDept }) => {
+    const [localToast, setLocalToast] = React.useState('');
+    const showLocalToast = (msg) => { setLocalToast(msg); setTimeout(() => setLocalToast(''), 2500); };
     if (!selectedStudentProfile) return null;
     const s = selectedStudentProfile;
     return (
@@ -37,40 +41,79 @@ const StudentProfileModal = ({ selectedStudentProfile, setSelectedStudentProfile
                     <p style={{ margin: 0, color: '#64748b' }}>{s.regNo || s.rollNo} | {selectedDept?.name} | {s.semester || s.sem} Sem</p>
                 </div>
 
+                <div style={{ marginBottom: '1.5rem' }}>
+                    <div className={styles.glassCard} style={{ padding: '1rem', overflowX: 'auto' }}>
+                        <h4 style={{ margin: '0 0 0.5rem', color: '#64748b', fontSize: '0.9rem' }}>Subject-Wise Performance (Out of 50 each)</h4>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#64748b' }}>
+                                    <th style={{ textAlign: 'left', padding: '0.5rem' }}>Subject</th>
+                                    <th style={{ textAlign: 'center', padding: '0.5rem' }}>CIE-1</th>
+                                    <th style={{ textAlign: 'center', padding: '0.5rem' }}>CIE-2</th>
+                                    <th style={{ textAlign: 'center', padding: '0.5rem' }}>CIE-3</th>
+                                    <th style={{ textAlign: 'center', padding: '0.5rem' }}>CIE-4</th>
+                                    <th style={{ textAlign: 'center', padding: '0.5rem' }}>CIE-5</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {s.subjectMarks && Object.entries(s.subjectMarks).map(([subj, marks]) => (
+                                    <tr key={subj} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                        <td style={{ padding: '0.5rem', color: '#0f172a', fontWeight: 500 }}>{subj}</td>
+                                        <td style={{ textAlign: 'center', padding: '0.5rem' }}>{marks.cie1 !== undefined ? marks.cie1 : '-'}</td>
+                                        <td style={{ textAlign: 'center', padding: '0.5rem' }}>{marks.cie2 !== undefined ? marks.cie2 : '-'}</td>
+                                        <td style={{ textAlign: 'center', padding: '0.5rem' }}>{marks.cie3 !== undefined ? marks.cie3 : '-'}</td>
+                                        <td style={{ textAlign: 'center', padding: '0.5rem' }}>{marks.cie4 !== undefined ? marks.cie4 : '-'}</td>
+                                        <td style={{ textAlign: 'center', padding: '0.5rem' }}>{marks.cie5 !== undefined ? marks.cie5 : '-'}</td>
+                                    </tr>
+                                ))}
+                                {(!s.subjectMarks || Object.keys(s.subjectMarks).length === 0) && (
+                                    <tr><td colSpan="6" style={{ textAlign: 'center', padding: '1rem', color: '#64748b' }}>No marks entered yet</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
-                    <div className={styles.glassCard} style={{ padding: '1rem' }}>
-                        <h4 style={{ margin: '0 0 0.5rem', color: '#64748b', fontSize: '0.9rem' }}>Academic Performance</h4>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                            <span>CIE-1</span>
-                            <span>{s.marks?.cie1 || 0}/20</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                            <span>CIE-2</span>
-                            <span>{s.marks?.cie2 || 0}/20</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: '#0f172a', borderTop: '1px solid #e2e8f0', paddingTop: '0.5rem' }}>
-                            <span>Total</span>
-                            <span>{(s.marks?.cie1 || 0) + (s.marks?.cie2 || 0)}/40</span>
+                    <div className={styles.glassCard} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h4 style={{ margin: '0', color: '#64748b', fontSize: '0.9rem' }}>Overall Performance</h4>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                            <div style={{ fontSize: '2.5rem', fontWeight: '800', color: s.isCie1Complete ? '#10b981' : '#cbd5e1' }}>
+                                {s.isCie1Complete && s.overallCie1Percentage !== null ? `${s.overallCie1Percentage.toFixed(1)}%` : 'Incomplete'}
+                            </div>
+                            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: s.isCie1Complete ? '#059669' : '#f59e0b', fontWeight: 500 }}>
+                                {s.isCie1Complete ? 'Completed all CIE-1 exams' : 'Missing CIE-1 marks for some subjects'}
+                            </p>
                         </div>
                     </div>
-                    <div className={styles.glassCard} style={{ padding: '1rem' }}>
-                        <h4 style={{ margin: '0 0 0.5rem', color: '#64748b', fontSize: '0.9rem' }}>Behavior</h4>
+
+                    <div className={styles.glassCard} style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        <h4 style={{ margin: '0', color: '#64748b', fontSize: '0.9rem' }}>Behavior & Contact</h4>
                         <div>
                             <span style={{ padding: '4px 8px', background: '#f0f9ff', color: '#0284c7', borderRadius: '4px', fontSize: '0.8rem' }}>Good Conduct</span>
+                        </div>
+                        <div style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>
+                            <span style={{ color: '#64748b', display: 'block', marginBottom: '2px' }}>Mentor</span>
+                            <span style={{ color: '#0f172a', fontWeight: 500 }}>{s.mentor || 'Not Assigned'}</span>
+                        </div>
+                        <div style={{ fontSize: '0.85rem' }}>
+                            <span style={{ color: '#64748b', display: 'block', marginBottom: '2px' }}>Parent Number</span>
+                            <span style={{ color: '#0f172a', fontWeight: 500 }}>{s.parentPhone || 'N/A'}</span>
                         </div>
                     </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button className={styles.primaryBtn} onClick={() => alert('Report Generated')}>Download Report Card</button>
-                    <button className={styles.secondaryBtn} onClick={() => alert('Contacting Parents...')}>Contact Parent</button>
+                    <button className={styles.primaryBtn} onClick={() => showLocalToast('Report Generated')}>Download Report Card</button>
+                    <button className={styles.secondaryBtn} onClick={() => showLocalToast('Contacting Parents...')}>Contact Parent</button>
                 </div>
             </div>
+            {localToast && <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 10001, padding: '0.85rem 1.5rem', borderRadius: '12px', background: '#dcfce7', color: '#166534', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontWeight: 600, fontSize: '0.9rem', maxWidth: '400px' }}>{localToast}</div>}
         </div>
     );
 };
 
-export const DirectorySection = memo(({ departments = [], selectedDept, deptStudents, handleDeptClick, setSelectedDept, setSelectedStudentProfile: propSetSelectedStudentProfile }) => {
+export const DirectorySection = memo(({ departments = [], selectedDept, deptStudents, handleDeptClick, setSelectedDept, setSelectedStudentProfile: propSetSelectedStudentProfile, loading: parentLoading }) => {
     const { user } = useAuth();
     const [semester, setSemester] = useState('2nd');
     const [section, setSection] = useState('A');
@@ -78,6 +121,8 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
     const [searchQuery, setSearchQuery] = useState('');
     const [showAtRisk, setShowAtRisk] = useState(false);
     const [selectedStudents, setSelectedStudents] = useState([]);
+    const [bulkToast, setBulkToast] = useState('');
+    const showBulkToast = (msg) => { setBulkToast(msg); setTimeout(() => setBulkToast(''), 2500); };
     const itemsPerPage = 10000; // Show all students
 
     const [internalSelectedStudent, setInternalSelectedStudent] = useState(null);
@@ -106,6 +151,7 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
     // State for students fetched from API
     const [apiStudents, setApiStudents] = useState([]);
     const [localLoading, setLocalLoading] = useState(false);
+    const effectiveLoading = parentLoading || localLoading;
 
     // Fetch students when department changes (or on mount if all)
     React.useEffect(() => {
@@ -115,10 +161,8 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
             setLocalLoading(true);
             try {
                 // Determine API endpoint
-                const token = user?.token;
-                const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
                 const endpoint = `${API_BASE_URL}/student/all?department=${selectedDept.id}`;
-                const response = await fetch(endpoint, { headers });
+                const response = await authenticatedFetch(endpoint);
 
                 if (response.ok) {
                     const data = await response.json();
@@ -153,9 +197,11 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
             const matchesSem = semester === 'All' || s.semester == semester.replace(/\D/g, ''); // Extract number
             const matchesSec = section === 'All' || s.section === section;
 
-            // Risk calculation: student is at risk if total CIE marks < 40% (16/40)
-            const totalMarks = (s.marks?.cie1 || 0) + (s.marks?.cie2 || 0);
-            const isAtRisk = totalMarks < 16;
+            // Risk calculation: student is at risk if total CIE marks < 40%
+            const totalAcquired = Object.values(s.subjectMarks || {}).reduce((sum, marks) => sum + (marks.cie1 || 0) + (marks.cie2 || 0) + (marks.cie3 || 0) + (marks.cie4 || 0) + (marks.cie5 || 0), 0);
+            const totalPossible = Object.values(s.subjectMarks || {}).reduce((count, marks) => count + (marks.cie1 !== undefined ? 1 : 0) + (marks.cie2 !== undefined ? 1 : 0) + (marks.cie3 !== undefined ? 1 : 0) + (marks.cie4 !== undefined ? 1 : 0) + (marks.cie5 !== undefined ? 1 : 0), 0) * 50;
+            const percentage = totalPossible > 0 ? (totalAcquired / totalPossible) * 100 : 0;
+            const isAtRisk = totalPossible > 0 && percentage < 40;
 
             // If filter is active, only show at-risk students; otherwise show all
             const matchesRisk = showAtRisk ? isAtRisk : true;
@@ -171,6 +217,31 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
     }, [currentPage, filteredStudents]);
 
     const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
+
+    if (parentLoading && departments.length === 0) {
+        return (
+            <div className={styles.sectionVisible}>
+                <h3 className={styles.chartTitle} style={{ marginBottom: '1.5rem' }}>Select Department</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1.5rem' }}>
+                    {[1, 2, 3, 4].map(i => (
+                        <div key={i} className={styles.glassCard} style={{ borderLeft: '4px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
+                                <Skeleton width="120px" height="24px" />
+                                <Skeleton width="40px" height="20px" />
+                            </div>
+                            <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
+                                <Skeleton width="80px" height="14px" style={{ marginBottom: '8px' }} />
+                                <Skeleton width="120px" height="14px" />
+                            </div>
+                            <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                                <Skeleton width="100px" height="16px" />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
 
     if (!selectedDept) {
         return (
@@ -195,8 +266,8 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
                                 <span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px', fontSize: '0.8rem', fontWeight: 'bold' }}>{dept.id}</span>
                             </div>
                             <div style={{ color: '#64748b', fontSize: '0.9rem' }}>
-                                <p>HOD: {dept.hod}</p>
-                                <p>Total Students: {dept.studentCount}</p>
+                                <p style={{ margin: '0 0 4px 0' }}>HOD: <span style={{ background: 'linear-gradient(to right, #2563eb, #9333ea, #db2777)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', fontWeight: 700 }}>{dept.hod}</span></p>
+                                <p style={{ margin: 0 }}>Total Students: {dept.studentCount}</p>
                             </div>
                             <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                                 <span style={{ color: '#2563eb', fontWeight: '600', fontSize: '0.9rem' }}>View Students →</span>
@@ -293,7 +364,7 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
                             value={semester}
                             onChange={(e) => setSemester(e.target.value)}
                         >
-                            {['1st', '2nd', '3rd', '4th', '5th'].map(sem => (
+                            {['1st', '2nd', '3rd', '4th', '5th', '6th'].map(sem => (
                                 <option key={sem} value={sem}>{sem} Sem</option>
                             ))}
                         </select>
@@ -360,8 +431,8 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
                         <span style={{ fontWeight: 600 }}>{selectedStudents.length} students selected</span>
                     </div>
                     <div style={{ display: 'flex', gap: '1rem' }}>
-                        <button style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer' }} onClick={() => alert("Sending SMS to selected parents...")}>Send SMS</button>
-                        <button style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer' }} onClick={() => alert("Printing Reports...")}>Print Reports</button>
+                        <button style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer' }} onClick={() => showBulkToast('Sending SMS to selected parents...')}>Send SMS</button>
+                        <button style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '6px', fontWeight: 500, cursor: 'pointer' }} onClick={() => showBulkToast('Printing Reports...')}>Print Reports</button>
                         <button style={{ background: 'white', border: 'none', color: '#0f172a', padding: '6px 12px', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }} onClick={() => setSelectedStudents([])}>Clear</button>
                     </div>
                 </div>
@@ -384,7 +455,25 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
                         </tr>
                     </thead>
                     <tbody>
-                        {paginatedStudents.length > 0 ? (
+                        {effectiveLoading ? (
+                            [1, 2, 3, 4, 5].map(i => (
+                                <tr key={i}>
+                                    <td><Skeleton width="20px" height="20px" /></td>
+                                    <td><Skeleton width="40px" height="14px" /></td>
+                                    <td><Skeleton width="100px" height="14px" /></td>
+                                    <td><Skeleton width="150px" height="14px" /></td>
+                                    <td><Skeleton width="40px" height="14px" /></td>
+                                    <td>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <Skeleton width="80px" height="6px" />
+                                            <Skeleton width="30px" height="14px" />
+                                        </div>
+                                    </td>
+                                    <td><Skeleton width="80px" height="20px" /></td>
+                                    <td><Skeleton width="100px" height="32px" /></td>
+                                </tr>
+                            ))
+                        ) : paginatedStudents.length > 0 ? (
                             paginatedStudents.map((student, index) => (
                                 <tr key={student.id} onClick={() => handleViewProfile(student)} style={{ cursor: 'pointer', background: selectedStudents.includes(student.id) ? '#f0f9ff' : 'transparent' }}>
                                     <td onClick={(e) => e.stopPropagation()}>
@@ -398,16 +487,23 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
                                     <td>{student.semester || student.sem}</td>
 
                                     <td>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <div style={{ width: '80px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                                                <div style={{
-                                                    width: `${((student.marks?.cie1 || 0) + (student.marks?.cie2 || 0)) / 40 * 100}%`,
-                                                    height: '100%',
-                                                    background: (((student.marks?.cie1 || 0) + (student.marks?.cie2 || 0)) / 40) >= 0.5 ? '#3b82f6' : '#f59e0b'
-                                                }}></div>
-                                            </div>
-                                            <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{Math.round(((student.marks?.cie1 || 0) + (student.marks?.cie2 || 0)) / 40 * 100)}%</span>
-                                        </div>
+                                        {(() => {
+                                            const totalAcquired = Object.values(student.subjectMarks || {}).reduce((sum, marks) => sum + (marks.cie1 || 0) + (marks.cie2 || 0) + (marks.cie3 || 0) + (marks.cie4 || 0) + (marks.cie5 || 0), 0);
+                                            const totalPossible = Object.values(student.subjectMarks || {}).reduce((count, marks) => count + (marks.cie1 !== undefined ? 1 : 0) + (marks.cie2 !== undefined ? 1 : 0) + (marks.cie3 !== undefined ? 1 : 0) + (marks.cie4 !== undefined ? 1 : 0) + (marks.cie5 !== undefined ? 1 : 0), 0) * 50;
+                                            const percentage = totalPossible > 0 ? Math.round((totalAcquired / totalPossible) * 100) : 0;
+                                            return (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <div style={{ width: '80px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                                                        <div style={{
+                                                            width: `${percentage}%`,
+                                                            height: '100%',
+                                                            background: percentage >= 50 ? '#3b82f6' : '#f59e0b'
+                                                        }}></div>
+                                                    </div>
+                                                    <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{percentage}%</span>
+                                                </div>
+                                            );
+                                        })()}
                                     </td>
 
                                     <td>
@@ -458,6 +554,7 @@ export const DirectorySection = memo(({ departments = [], selectedDept, deptStud
                 setSelectedStudentProfile={setInternalSelectedStudent}
                 selectedDept={selectedDept}
             />
+            {bulkToast && <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 10001, padding: '0.85rem 1.5rem', borderRadius: '12px', background: '#dcfce7', color: '#166534', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', fontWeight: 600, fontSize: '0.9rem', maxWidth: '400px' }}>{bulkToast}</div>}
         </div>
     );
 });

@@ -1,4 +1,5 @@
-const API_BASE_URL = 'http://127.0.0.1:8084/api';
+import API_BASE_URL from '../config/api';
+import authenticatedFetch from '../utils/authFetch';
 
 const safeJson = async (response) => {
     const text = await response.text();
@@ -32,7 +33,7 @@ export const login = async (userId, password) => {
 
 export const fetchStudentDashboard = async (regNo) => {
     try {
-        const response = await fetch(`${API_BASE_URL}/student/dashboard?regNo=${regNo}`);
+        const response = await authenticatedFetch(`${API_BASE_URL}/student/dashboard?regNo=${regNo}`);
         if (!response.ok) {
             const errorData = await safeJson(response);
             throw new Error(errorData.message || 'Failed to fetch student data');
@@ -46,7 +47,7 @@ export const fetchStudentDashboard = async (regNo) => {
 
 export const fetchHODDashboard = async () => {
     try {
-        const response = await fetch(`${API_BASE_URL}/hod/dashboard`);
+        const response = await authenticatedFetch(`${API_BASE_URL}/hod/dashboard`);
         if (!response.ok) {
             const errorData = await safeJson(response);
             throw new Error(errorData.message || 'Failed to fetch HOD data');
@@ -58,10 +59,9 @@ export const fetchHODDashboard = async () => {
     }
 };
 
-export const fetchPrincipalDashboard = async (token) => {
+export const fetchPrincipalDashboard = async () => {
     try {
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const response = await fetch(`${API_BASE_URL}/principal/dashboard`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/dashboard`);
         if (!response.ok) {
             const errorData = await safeJson(response);
             throw new Error(errorData.message || 'Failed to fetch principal dashboard');
@@ -73,10 +73,9 @@ export const fetchPrincipalDashboard = async (token) => {
     }
 };
 
-export const fetchAllFaculty = async (token) => {
+export const fetchAllFaculty = async () => {
     try {
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const response = await fetch(`${API_BASE_URL}/principal/faculty/all`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/faculty/all`);
         if (!response.ok) {
             const errorData = await safeJson(response);
             throw new Error(errorData.message || 'Failed to fetch faculty list');
@@ -88,10 +87,9 @@ export const fetchAllFaculty = async (token) => {
     }
 };
 
-export const fetchTimetables = async (token) => {
+export const fetchTimetables = async () => {
     try {
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const response = await fetch(`${API_BASE_URL}/principal/timetables`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/timetables`);
         if (!response.ok) {
             const errorData = await safeJson(response);
             throw new Error(errorData.message || 'Failed to fetch timetables');
@@ -103,10 +101,9 @@ export const fetchTimetables = async (token) => {
     }
 };
 
-export const fetchNotifications = async (token) => {
+export const fetchNotifications = async () => {
     try {
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const response = await fetch(`${API_BASE_URL}/principal/notifications`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/notifications`);
         if (!response.ok) {
             const errorData = await safeJson(response);
             throw new Error(errorData.message || 'Failed to fetch notifications');
@@ -118,10 +115,9 @@ export const fetchNotifications = async (token) => {
     }
 };
 
-export const fetchReports = async (token) => {
+export const fetchReports = async () => {
     try {
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const response = await fetch(`${API_BASE_URL}/principal/reports`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/reports`);
         if (!response.ok) {
             const errorData = await safeJson(response);
             throw new Error(errorData.message || 'Failed to fetch reports');
@@ -133,10 +129,9 @@ export const fetchReports = async (token) => {
     }
 };
 
-export const fetchHods = async (token) => {
+export const fetchHods = async () => {
     try {
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const response = await fetch(`${API_BASE_URL}/principal/hods`, { headers });
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/hods`);
         if (!response.ok) {
             const errorData = await safeJson(response);
             throw new Error(errorData.message || 'Failed to fetch HODs');
@@ -148,15 +143,10 @@ export const fetchHods = async (token) => {
     }
 };
 
-export const createHod = async (token, hodData) => {
+export const createHod = async (hodData) => {
     try {
-        const headers = {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        };
-        const response = await fetch(`${API_BASE_URL}/principal/hod`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/hod`, {
             method: 'POST',
-            headers,
             body: JSON.stringify(hodData),
         });
         if (!response.ok) {
@@ -170,15 +160,10 @@ export const createHod = async (token, hodData) => {
     }
 };
 
-export const updateHod = async (token, id, hodData) => {
+export const updateHod = async (id, hodData) => {
     try {
-        const headers = {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        };
-        const response = await fetch(`${API_BASE_URL}/principal/hod/${id}`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/hod/${id}`, {
             method: 'PUT',
-            headers,
             body: JSON.stringify(hodData),
         });
         if (!response.ok) {
@@ -192,12 +177,10 @@ export const updateHod = async (token, id, hodData) => {
     }
 };
 
-export const deleteHod = async (token, id) => {
+export const deleteHod = async (id) => {
     try {
-        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
-        const response = await fetch(`${API_BASE_URL}/principal/hod/${id}`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/hod/${id}`, {
             method: 'DELETE',
-            headers,
         });
         if (!response.ok) {
             const errorData = await safeJson(response);
@@ -212,7 +195,7 @@ export const deleteHod = async (token, id) => {
 
 export const fetchSemesterStatus = async () => {
     try {
-        const response = await fetch(`${API_BASE_URL}/principal/semester/status`);
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/semester/status`);
         return await safeJson(response);
     } catch (error) {
         console.error('Fetch semester status error:', error);
@@ -220,14 +203,10 @@ export const fetchSemesterStatus = async () => {
     }
 };
 
-export const updateSemesterStatus = async (token, status) => {
+export const updateSemesterStatus = async (status) => {
     try {
-        const response = await fetch(`${API_BASE_URL}/principal/semester/status`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/semester/status`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
             body: JSON.stringify({ status })
         });
         return await safeJson(response);
@@ -237,11 +216,11 @@ export const updateSemesterStatus = async (token, status) => {
     }
 };
 
-export const resetMarks = async (token) => {
+export const resetMarks = async (semester = 'All') => {
     try {
-        const response = await fetch(`${API_BASE_URL}/principal/semester/reset-marks`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/semester/reset-marks`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
+            body: JSON.stringify({ semester })
         });
         return await safeJson(response);
     } catch (error) {
@@ -250,11 +229,11 @@ export const resetMarks = async (token) => {
     }
 };
 
-export const resetFaculty = async (token) => {
+export const resetFaculty = async (semester = 'All') => {
     try {
-        const response = await fetch(`${API_BASE_URL}/principal/semester/reset-faculty`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/semester/reset-faculty`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
+            body: JSON.stringify({ semester })
         });
         return await safeJson(response);
     } catch (error) {
@@ -263,11 +242,11 @@ export const resetFaculty = async (token) => {
     }
 };
 
-export const cleanupData = async (token) => {
+export const cleanupData = async (semester = 'All') => {
     try {
-        const response = await fetch(`${API_BASE_URL}/principal/semester/cleanup-data`, {
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/semester/cleanup-data`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
+            body: JSON.stringify({ semester })
         });
         return await safeJson(response);
     } catch (error) {
@@ -276,11 +255,15 @@ export const cleanupData = async (token) => {
     }
 };
 
-export const shiftSemesters = async (token) => {
+export const shiftSemesters = async (semester = 'All', fromSemester = null, toSemester = null) => {
     try {
-        const response = await fetch(`${API_BASE_URL}/principal/semester/shift`, {
+        const payload = { semester };
+        if (fromSemester) payload.fromSemester = fromSemester;
+        if (toSemester) payload.toSemester = toSemester;
+        
+        const response = await authenticatedFetch(`${API_BASE_URL}/principal/semester/shift`, {
             method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
+            body: JSON.stringify(payload)
         });
         return await safeJson(response);
     } catch (error) {
