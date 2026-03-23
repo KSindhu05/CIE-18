@@ -174,8 +174,8 @@ const OverviewSection = memo(({
                                         </div>
                                     </div>
                                     <div style={{ marginTop: '1rem', fontWeight: 600, fontSize: '0.9rem', color: '#64748b', textAlign: 'center', lineHeight: 1.2 }}>
-                                        {dept} <br/>
-                                        <span style={{fontSize: '0.75rem', fontWeight: 500}}>
+                                        {dept} <br />
+                                        <span style={{ fontSize: '0.75rem', fontWeight: 500 }}>
                                             ({deptCompletedCounts?.[dept] || 0}/{deptStudentCounts?.[dept] || 0} completed)
                                         </span>
                                     </div>

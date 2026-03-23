@@ -223,8 +223,8 @@ public class StudentService {
             Boolean isCie1Complete = (enrolledCount > 0 && cie1Count >= enrolledCount);
             Double overallCie1Percentage = 0.0;
             
-            if (isCie1Complete) {
-                overallCie1Percentage = (totalCie1Marks / (enrolledCount * 50.0)) * 100.0;
+            if (cie1Count > 0) {
+                overallCie1Percentage = (totalCie1Marks / (cie1Count * 50.0)) * 100.0;
             }
             
             System.out.println("DEBUG [StudentAnalytics] " + student.getRegNo() 
@@ -232,7 +232,8 @@ public class StudentService {
                 + " | sem=" + student.getSemester()
                 + " | enrolledSubjects=" + enrolledCount 
                 + " | cie1Count=" + cie1Count 
-                + " | complete=" + isCie1Complete);
+                + " | complete=" + isCie1Complete
+                + " | overallCie1Percentage=" + overallCie1Percentage);
 
             return new com.example.ia.payload.response.StudentResponse(student, marksMap, subjectMarks, isCie1Complete, overallCie1Percentage);
         }).collect(java.util.stream.Collectors.toList());

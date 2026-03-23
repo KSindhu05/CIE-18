@@ -38,6 +38,11 @@ const StudentDashboard = () => {
     const [facultyList, setFacultyList] = useState([]); // Added facultyList state
     const [semesterStatus, setSemesterStatus] = useState('ACTIVE');
     const [loading, setLoading] = useState(true);
+    const [perfConfig, setPerfConfig] = useState({
+        excellent_threshold: '40',
+        low_threshold: '20',
+        low_attendance_threshold: '75'
+    });
 
     // Student Profile State
     const [studentInfo, setStudentInfo] = useState({
@@ -49,6 +54,17 @@ const StudentDashboard = () => {
     });
 
     React.useEffect(() => {
+        const fetchPerfConfig = async (dept) => {
+            if (!dept) return;
+            try {
+                const res = await authenticatedFetch(`${API_BASE_URL}/hod/config?department=${dept}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setPerfConfig(data);
+                }
+            } catch (e) { console.error("Failed to fetch performance config", e); }
+        };
+
         const fetchMarks = async () => {
             try {
                 if (!user || !user.token) return;
@@ -60,7 +76,6 @@ const StudentDashboard = () => {
                     const groupedMarks = {};
                     data.forEach(mark => {
                         if (!mark.subject) return;
-                        // Use base subject name as key to merge Theory/Lab
                         const baseName = mark.subject.name.replace(/\s*[\(\[]?(Theory|Lab|T|L|Theory\s+Exam|Practical)[\)\]]?\s*$/i, '').trim();
                         if (!groupedMarks[baseName]) {
                             groupedMarks[baseName] = {
@@ -90,7 +105,6 @@ const StudentDashboard = () => {
 
                     setRealMarks(Object.values(groupedMarks));
 
-                    // Aggregate stats for profile
                     const recordsWithMarks = data.filter(m => m.totalScore != null && m.totalScore > 0);
                     const totalMarks = recordsWithMarks.reduce((sum, m) => sum + (m.totalScore || 0), 0);
                     const totalMaxMarks = recordsWithMarks.reduce((sum, m) => sum + (m.subject?.maxMarks || 50), 0);
@@ -99,6 +113,25 @@ const StudentDashboard = () => {
 
                     if (data.length > 0) {
                         const s = data[0].student;
+                        
+                        // Automated Remarks Logic
+                        const mThreshold = parseInt(perfConfig.low_threshold) || 20;
+                        const aThreshold = parseInt(perfConfig.low_attendance_threshold) || 75;
+                        let lowPerfCount = 0;
+                        Object.values(groupedMarks).forEach(m => {
+                            const isLow = (m.cie1Score != null && m.cie1Score < mThreshold) || (m.cie1Att != null && m.cie1Att < aThreshold) ||
+                                          (m.cie2Score != null && m.cie2Score < mThreshold) || (m.cie2Att != null && m.cie2Att < aThreshold) ||
+                                          (m.cie3Score != null && m.cie3Score < mThreshold) || (m.cie3Att != null && m.cie3Att < aThreshold) ||
+                                          (m.cie4Score != null && m.cie4Score < mThreshold) || (m.cie4Att != null && m.cie4Att < aThreshold) ||
+                                          (m.cie5Score != null && m.cie5Score < mThreshold) || (m.cie5Att != null && m.cie5Att < aThreshold);
+                            if (isLow) lowPerfCount++;
+                        });
+
+                        let autoRemark = '';
+                        if (lowPerfCount >= 3) autoRemark = "🚨 Come meet HOD immediately due to poor performance/attendance in 3+ subjects.";
+                        else if (lowPerfCount === 2) autoRemark = "⚠️ Contact your Mentor; performance is low in 2 subjects.";
+                        else if (lowPerfCount === 1) autoRemark = "Contact Mentor for improvement in one subject.";
+
                         setStudentInfo(prev => ({
                             ...prev,
                             name: s.name,
@@ -107,33 +140,29 @@ const StudentDashboard = () => {
                             semester: s.semester,
                             cgpa: aggregatePercentage,
                             avgCieScore: `${avgScore50}/50`,
-                            parentPhone: s.parentPhone
+                            parentPhone: s.parentPhone,
+                            overallRemarks: s.overallRemarks ? `${s.overallRemarks}${autoRemark ? ' | ' + autoRemark : ''}` : (autoRemark || "Consistent performance.")
                         }));
+                        if (s.department) fetchPerfConfig(s.department);
                         setSelectedSemester(s.semester.toString());
                     } else {
-                        // Fetch profile if no marks
                         try {
                             const profileRes = await authenticatedFetch(`${API_BASE_URL}/student/profile`);
                             if (profileRes.ok) {
                                 const s = await profileRes.json();
                                 setStudentInfo(prev => ({
                                     ...prev,
-                                    name: s.name,
-                                    rollNo: s.regNo,
-                                    branch: s.department,
-                                    semester: s.semester,
-                                    parentPhone: s.parentPhone
+                                    name: s.name, rollNo: s.regNo, branch: s.department, semester: s.semester, parentPhone: s.parentPhone
                                 }));
                                 setSelectedSemester(s.semester.toString());
+                                if (s.department) fetchPerfConfig(s.department);
                             }
                         } catch (e) { console.error("Failed to fetch student profile", e); }
                     }
                     const uniqueCIEs = new Set(data.filter(m => m.totalScore != null && m.totalScore > 0).map(m => m.cieType));
                     setCieStatus(`${uniqueCIEs.size}/5`);
                 }
-            } catch (error) {
-                console.error("Failed to fetch marks", error);
-            }
+            } catch (error) { console.error("Failed to fetch marks", error); }
         };
 
         const loadSemesterStatus = async () => {
@@ -141,53 +170,37 @@ const StudentDashboard = () => {
             if (status) setSemesterStatus(status.status);
         };
 
-        fetchMarks();
-        loadSemesterStatus();
-
         const fetchUpdates = async () => {
             if (!user || !user.token) return;
             try {
                 const subRes = await authenticatedFetch(`${API_BASE_URL}/student/subjects`);
                 if (subRes.ok) {
                     const subData = await subRes.json();
-
-                    // Group subjects by base name
                     const mergedSubjects = {};
                     subData.forEach(s => {
                         const baseName = s.name.replace(/\s*[\(\[]?(Theory|Lab|T|L|Theory\s+Exam|Practical)[\)\]]?\s*$/i, '').trim();
                         if (!mergedSubjects[baseName]) {
-                            mergedSubjects[baseName] = {
-                                id: s.id,
-                                name: baseName,
-                                code: s.code.replace(/[-(\s]+(T|L|Theory|Lab)$/i, '').trim(),
-                                department: s.department,
-                                semester: s.semester
-                            };
+                            mergedSubjects[baseName] = { id: s.id, name: baseName, code: s.code.replace(/[-(\s]+(T|L|Theory|Lab)$/i, '').trim(), department: s.department, semester: s.semester };
                         }
                     });
                     setRealSubjects(Object.values(mergedSubjects));
                 }
-
                 const annRes = await authenticatedFetch(`${API_BASE_URL}/cie/student/announcements`);
                 if (annRes.ok) {
                     const anns = await annRes.json();
-                    setUpcomingExams(anns.map(a => ({
-                        id: a.id, exam: `CIE-${a.cieNumber}`, subject: a.subject?.name || 'Subject', date: a.scheduledDate, time: a.startTime ? a.startTime.substring(0, 5) : 'TBD', duration: a.durationMinutes + ' mins', room: a.examRoom || 'TBD', instructions: a.instructions, syllabus: a.syllabusCoverage
-                    })));
+                    setUpcomingExams(anns.map(a => ({ id: a.id, exam: `CIE-${a.cieNumber}`, subject: a.subject?.name || 'Subject', date: a.scheduledDate, time: a.startTime ? a.startTime.substring(0, 5) : 'TBD', duration: a.durationMinutes + ' mins', room: a.examRoom || 'TBD', instructions: a.instructions, syllabus: a.syllabusCoverage })));
                 }
                 const notifRes = await authenticatedFetch(`${API_BASE_URL}/cie/student/notifications`);
                 if (notifRes.ok) {
                     const notifs = await notifRes.json();
                     const filteredNotifs = notifs.filter(n => !n.message.includes("Welcome to the IA Management System") && n.type !== 'EXAM_SCHEDULE');
-                    setNotifications(filteredNotifs.map(n => ({
-                        id: n.id, message: n.message, time: new Date(n.createdAt).toLocaleDateString(), type: (n.type === 'CIE_ANNOUNCEMENT' || n.type === 'EXAM_SCHEDULE') ? 'info' : 'alert', isRead: n.isRead
-                    })));
+                    setNotifications(filteredNotifs.map(n => ({ id: n.id, message: n.message, time: new Date(n.createdAt).toLocaleDateString(), type: (n.type === 'CIE_ANNOUNCEMENT' || n.type === 'EXAM_SCHEDULE') ? 'info' : 'alert', isRead: n.isRead })));
                     setUnreadCount(filteredNotifs.filter(n => !n.isRead).length);
-                } else { setNotifications([]); }
+                }
             } catch (e) { console.error("Error fetching updates:", e); } finally { setLoadingAnnouncements(false); }
             try {
                 const facRes = await authenticatedFetch(`${API_BASE_URL}/student/faculty`);
-                if (facRes.ok) { const facData = await facRes.json(); setFacultyList(facData); }
+                if (facRes.ok) { setFacultyList(await facRes.json()); }
             } catch (e) { console.error("Error fetching faculty:", e); }
         };
 
@@ -338,6 +351,62 @@ const StudentDashboard = () => {
                     </div>
                     <AcademicInsights realMarks={realMarks} loading={loading} />
                 </div>
+
+                {/* Conditional Remarks Section */}
+                {!loading && realMarks.length > 0 && (() => {
+                    // Count subjects with low marks or attendance in the latest CIE
+                    let lowSubjectsCount = 0;
+                    const lowSubjectNames = [];
+                    realMarks.forEach(mark => {
+                        const score = mark[latestCie.key];
+                        const att = mark[latestCie.att];
+                        if ((score != null && score < 25) || (att != null && att < 75)) {
+                            lowSubjectsCount++;
+                            lowSubjectNames.push(mark.name);
+                        }
+                    });
+
+                    let overallMessage = null;
+                    let messageColor = '#15803d';
+                    let messageBg = '#f0fdf4';
+                    let messageBorder = '#bbf7d0';
+
+                    if (lowSubjectsCount >= 3) {
+                        overallMessage = `⚠️ You have low marks or attendance in ${lowSubjectsCount} subjects (${lowSubjectNames.join(', ')}). Please come meet the HOD immediately.`;
+                        messageColor = '#dc2626';
+                        messageBg = '#fef2f2';
+                        messageBorder = '#fecaca';
+                    } else if (lowSubjectsCount === 2) {
+                        overallMessage = `📋 You have low marks or attendance in ${lowSubjectsCount} subjects (${lowSubjectNames.join(', ')}). Please contact your mentor for guidance.`;
+                        messageColor = '#ea580c';
+                        messageBg = '#fff7ed';
+                        messageBorder = '#fed7aa';
+                    }
+
+                    return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                            {overallMessage && (
+                                <div className={styles.card} style={{ border: `1px solid ${messageBorder}`, background: messageBg, animationDelay: '0.3s' }}>
+                                    <div style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <AlertCircle size={24} style={{ color: messageColor, flexShrink: 0 }} />
+                                        <span style={{ color: messageColor, fontWeight: 600, fontSize: '0.95rem' }}>{overallMessage}</span>
+                                    </div>
+                                </div>
+                            )}
+                            {studentInfo.overallRemarks && (
+                                <div className={styles.card} style={{ border: '1px solid #c7d2fe', background: '#eef2ff', animationDelay: '0.4s' }}>
+                                    <div style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                        <FileText size={20} style={{ color: '#4f46e5', flexShrink: 0 }} />
+                                        <div>
+                                            <span style={{ fontSize: '0.8rem', color: '#6366f1', fontWeight: 600, textTransform: 'uppercase' }}>HOD Remarks</span>
+                                            <p style={{ margin: '4px 0 0 0', color: '#3730a3', fontWeight: 500 }}>{studentInfo.overallRemarks}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
             </div>
         );
     };
@@ -514,16 +583,24 @@ const StudentDashboard = () => {
                                     {theorySubjects.map((row, idx) => {
                                         const getCieRemark = (v, a, label) => {
                                             if (v == null || isNaN(v) || a == null || isNaN(a)) return null;
+                                            const mThr = parseInt(perfConfig.low_threshold) || 20;
+                                            const aThr = parseInt(perfConfig.low_attendance_threshold) || 75;
+                                            const eThr = parseInt(perfConfig.excellent_threshold) || 40;
+
+                                            const isLowMarks = v < mThr;
+                                            const isLowAtt = a < aThr;
+                                            const isExcellent = v >= eThr && a >= aThr;
+
                                             return {
                                                 label,
-                                                lowMarks: v < 25,
-                                                lowAtt: a < 75,
-                                                excellent: v >= 40 && a >= 75,
-                                                severity: (v < 25 && a < 75) ? 3 : (v < 25 ? 2 : (a < 75 ? 2 : 0)),
-                                                text: (v < 25 && a < 75) ? `${label}: Low Marks, Low Att` :
-                                                    (v < 25 ? `${label}: Low Marks` :
-                                                        (a < 75 ? `${label}: Low Att` :
-                                                            (v >= 40 && a >= 75 ? `${label}: Excellent` : `${label}: Good`)))
+                                                lowMarks: isLowMarks,
+                                                lowAtt: isLowAtt,
+                                                excellent: isExcellent,
+                                                severity: (isLowMarks && isLowAtt) ? 3 : (isLowMarks ? 2 : (isLowAtt ? 2 : 0)),
+                                                text: (isLowMarks && isLowAtt) ? `Contact Mentor: Low Marks & Att` :
+                                                    (isLowMarks ? `Contact Mentor: Low Marks` :
+                                                        (isLowAtt ? `Contact Mentor: Low Att` :
+                                                            (isExcellent ? `${label}: Excellent` : `${label}: Good`)))
                                             };
                                         };
 

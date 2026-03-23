@@ -8,6 +8,7 @@ import { facultyData, facultyProfiles, facultySubjects, studentsList, labSchedul
 import styles from './FacultyDashboard.module.css';
 import authenticatedFetch from '../utils/authFetch';
 import Skeleton from '../components/ui/Skeleton';
+import { StudentProfileModal } from '../components/dashboard/principal/DirectorySection';
 
 
 
@@ -1525,82 +1526,14 @@ const FacultyDashboard = () => {
     const renderStudentProfileModal = () => {
         if (!showProfileModal || !selectedStudent) return null;
 
-        // Calculate Real Data
-        const percentage = calculateStudentPercentage(selectedStudent);
-        const grade = calculateGradeFromPercentage(percentage);
-
-
-
-        // Status Logic
-        let statusLabel = 'Good Standing';
-        let statusColor = '#059669'; // Green
-
-        if (grade === 'F') {
-            statusLabel = 'At Risk';
-            statusColor = '#dc2626'; // Red
-        } else if (grade === 'D') {
-            statusLabel = 'Average';
-            statusColor = '#d97706'; // Orange
-        }
-
-
-        return (
-            <div className={styles.modalOverlay} onClick={() => setShowProfileModal(false)}>
-                <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
-                    <div className={styles.modalHeader}>
-                        <h2>Student Profile</h2>
-                        <button className={styles.closeBtn} onClick={() => setShowProfileModal(false)}>
-                            <X size={20} />
-                        </button>
-                    </div>
-                    <div className={styles.modalBody}>
-                        <div className={styles.profileHeader}>
-                            <div className={styles.profileAvatar}>
-                                {selectedStudent.name.charAt(0)}
-                            </div>
-                            <div className={styles.profileInfo}>
-                                <h3>{selectedStudent.name}</h3>
-                                <p className={styles.profileMeta}>{selectedStudent.rollNo || selectedStudent.regNo}</p>
-                                <span className={`${styles.badge} ${styles.good}`}>
-                                    {selectedStudent.semester} Sem - {selectedStudent.section || 'A'} ({selectedStudent.batch || '2025'})
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className={styles.infoGrid}>
-                            <div className={styles.infoItem}>
-                                <span className={styles.infoLabel}>Email Address</span>
-                                <span className={styles.infoValue}>{(selectedStudent.rollNo || selectedStudent.regNo).toLowerCase()}@college.edu</span>
-                            </div>
-
-                            <div className={styles.infoItem}>
-                                <span className={styles.infoLabel}>Academic Standing</span>
-                                <span className={styles.infoValue} style={{ color: statusColor }}>{statusLabel} ({grade})</span>
-                            </div>
-                            <div className={styles.infoItem}>
-                                <span className={styles.infoLabel}>Student Phone</span>
-                                <span className={styles.infoValue}>{selectedStudent.phone || 'N/A'}</span>
-                            </div>
-                            <div className={styles.infoItem}>
-                                <span className={styles.infoLabel}>Parent Phone</span>
-                                <span className={styles.infoValue}>{selectedStudent.parentPhone || 'N/A'}</span>
-                            </div>
-                        </div>
-
-                        <div className={styles.infoGrid} style={{ marginTop: '1rem', borderTop: '1px solid #f3f4f6', paddingTop: '1rem' }}>
-                            <div className={styles.infoItem}>
-                                <span className={styles.infoLabel}>Current Aggregate</span>
-                                <span className={styles.infoValue} style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{percentage.toFixed(1)}%</span>
-                            </div>
-                        </div>
-
-                        <button className={styles.saveBtn} style={{ width: '100%', marginTop: '1rem' }} onClick={() => showToast('Full Report Downloaded')}>
-                            <FileText size={18} /> Download Full Academic Report
-                        </button>
-                    </div>
-                </div>
-            </div >
-        );
+        return <StudentProfileModal
+            selectedStudentProfile={selectedStudent}
+            setSelectedStudentProfile={(val) => {
+                setSelectedStudent(val);
+                if (!val) setShowProfileModal(false);
+            }}
+            selectedDept={{ name: user?.department || 'Department' }}
+        />;
     };
 
     // --- NEW FEATURE: MESSAGING LOGIC ---
@@ -3056,6 +2989,18 @@ const FacultyDashboard = () => {
                                             </span>
                                         </td>
                                         <td>
+                                            <button
+                                                className={styles.iconBtn}
+                                                onClick={() => {
+                                                    console.log("Selected Student Profile:", student);
+                                                    setSelectedStudent(student);
+                                                    setShowProfileModal(true);
+                                                }}
+                                                style={{ color: '#10b981', background: '#ecfdf5', padding: '6px', marginRight: '8px' }}
+                                                title="View All Subjects Performance"
+                                            >
+                                                <UserCheck size={16} />
+                                            </button>
                                             <button
                                                 className={styles.iconBtn}
                                                 onClick={() => handleEditStudent(student)}

@@ -79,7 +79,7 @@ const DebouncedInput = ({ value, onChange, max, style, className }) => {
         const tr = td.closest('tr');
         if (!tr) return;
         const cellIndex = Array.from(tr.children).indexOf(td);
-        
+
         const nextTr = direction === 1 ? tr.nextElementSibling : tr.previousElementSibling;
         if (nextTr) {
             const nextTd = nextTr.children[cellIndex];
@@ -99,7 +99,7 @@ const DebouncedInput = ({ value, onChange, max, style, className }) => {
             setLocalValue(val);
             return;
         }
-        
+
         if (val === '') {
             setLocalValue('');
             return;
@@ -110,7 +110,7 @@ const DebouncedInput = ({ value, onChange, max, style, className }) => {
 
         if (num < 0) num = 0;
         if (max && num > max) num = max;
-        
+
         setLocalValue(num.toString());
     };
 
@@ -228,17 +228,17 @@ const HODStudentRow = React.memo(({ student, index, editMark, selectedCieType, s
 
             const focused = getCieRemark(
                 selectedCieType === 'cie1' ? (valCIE1 !== '' ? parseFloat(valCIE1) : null) :
-                selectedCieType === 'cie2' ? (valCIE2 !== '' ? parseFloat(valCIE2) : null) :
-                selectedCieType === 'cie3' ? (valCIE3 !== '' ? parseFloat(valCIE3) : null) :
-                selectedCieType === 'cie4' ? (valCIE4 !== '' ? parseFloat(valCIE4) : null) :
-                (valCIE5 !== '' ? parseFloat(valCIE5) : null),
-                
+                    selectedCieType === 'cie2' ? (valCIE2 !== '' ? parseFloat(valCIE2) : null) :
+                        selectedCieType === 'cie3' ? (valCIE3 !== '' ? parseFloat(valCIE3) : null) :
+                            selectedCieType === 'cie4' ? (valCIE4 !== '' ? parseFloat(valCIE4) : null) :
+                                (valCIE5 !== '' ? parseFloat(valCIE5) : null),
+
                 selectedCieType === 'cie1' ? (att1Val !== '' ? parseFloat(att1Val) : null) :
-                selectedCieType === 'cie2' ? (att2Val !== '' ? parseFloat(att2Val) : null) :
-                selectedCieType === 'cie3' ? (att3Val !== '' ? parseFloat(att3Val) : null) :
-                selectedCieType === 'cie4' ? (att4Val !== '' ? parseFloat(att4Val) : null) :
-                (att5Val !== '' ? parseFloat(att5Val) : null),
-                
+                    selectedCieType === 'cie2' ? (att2Val !== '' ? parseFloat(att2Val) : null) :
+                        selectedCieType === 'cie3' ? (att3Val !== '' ? parseFloat(att3Val) : null) :
+                            selectedCieType === 'cie4' ? (att4Val !== '' ? parseFloat(att4Val) : null) :
+                                (att5Val !== '' ? parseFloat(att5Val) : null),
+
                 selectedCieType.replace('cie', 'CIE-')
             );
             if (!focused) return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
@@ -322,6 +322,9 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     const [hodExcellentList, setHodExcellentList] = useState([]);
     const [hodAverageList, setHodAverageList] = useState([]);
     const [hodLowList, setHodLowList] = useState([]);
+    const [perfConfig, setPerfConfig] = useState({ excellent_threshold: '40', average_threshold_min: '20', low_threshold: '20', low_attendance_threshold: '75' });
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [editingPerfConfig, setEditingPerfConfig] = useState({});
 
     // Syllabus Form State
     const [syllabusForm, setSyllabusForm] = useState({ subjectId: '', cieNumber: '1', syllabus: '' });
@@ -531,16 +534,18 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         { label: 'Student Management', path: '#student-mgmt', icon: <UserPlus size={20} />, isActive: activeTab === 'student-mgmt', onClick: () => setActiveTab('student-mgmt') },
         { label: 'IA Approval Panel', path: '#approvals', icon: <CheckCircle size={20} />, isActive: activeTab === 'approvals', onClick: () => setActiveTab('approvals'), badge: pendingApprovals.length || null },
         { label: 'Update Marks', path: '#marks', icon: <PenTool size={20} />, isActive: activeTab === 'update-marks', onClick: () => { setSelectedSubject(null); setSelectedSemester('all'); setActiveTab('update-marks'); } },
-        { label: 'Notifications', path: '#notifications', icon: <Bell size={20} />, isActive: activeTab === 'notifications', onClick: async () => {
-            setActiveTab('notifications');
-            setUnreadCount(0);
-            setNotifications(prev => prev.map(n => ({...n, isRead: true})));
-            try {
-                await authenticatedFetch(`${API_BASE_URL}/notifications/read-all`, { method: 'POST' });
-            } catch (e) {
-                console.error("Failed to mark all as read", e);
-            }
-        }, badge: unreadCount || null },
+        {
+            label: 'Notifications', path: '#notifications', icon: <Bell size={20} />, isActive: activeTab === 'notifications', onClick: async () => {
+                setActiveTab('notifications');
+                setUnreadCount(0);
+                setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+                try {
+                    await authenticatedFetch(`${API_BASE_URL}/notifications/read-all`, { method: 'POST' });
+                } catch (e) {
+                    console.error("Failed to mark all as read", e);
+                }
+            }, badge: unreadCount || null
+        },
     ];
 
 
@@ -818,7 +823,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                     setApprovalLoading(false);
                 }
             };
-            
+
             const fetchUnlockRequests = async () => {
                 setUnlockRequestsLoading(true);
                 try {
@@ -887,9 +892,27 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         }
     }, [activeTab, performanceSubjectId, isMyDept, selectedDept, user]);
 
+    // Fetch performance config from backend
+    useEffect(() => {
+        if (isMyDept && selectedDept) {
+            const fetchConfig = async () => {
+                try {
+                    const response = await authenticatedFetch(`${API_BASE_URL}/hod/config?department=${selectedDept}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setPerfConfig(data);
+                    }
+                } catch (e) { console.error('Failed to fetch config', e); }
+            };
+            fetchConfig();
+        }
+    }, [isMyDept, selectedDept]);
+
     // Compute Excellent/Average/Low performers from subjectMarksData for HOD performance tab
     useEffect(() => {
         if (activeTab !== 'performance' || Object.keys(subjectMarksData).length === 0) return;
+        const excellentThreshold = parseInt(perfConfig.excellent_threshold) || 40;
+        const lowThreshold = parseInt(perfConfig.low_threshold) || 20;
         const excellent = [];
         const average = [];
         const low = [];
@@ -913,10 +936,11 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                         cieType: cie.type,
                         score: cie.score,
                         attendance: cie.att,
-                        parentPhone: m.student?.parentPhone || m.student?.phone || ''
+                        parentPhone: m.student?.parentPhone || m.student?.phone || '',
+                        overallRemarks: m.student?.overallRemarks || ''
                     };
-                    if (cie.score > 40) excellent.push(record);
-                    else if (cie.score >= 20) average.push(record);
+                    if (cie.score > excellentThreshold) excellent.push(record);
+                    else if (cie.score >= lowThreshold) average.push(record);
                     else low.push(record);
                 });
             });
@@ -924,7 +948,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         setHodExcellentList(excellent);
         setHodAverageList(average);
         setHodLowList(low);
-    }, [activeTab, subjectMarksData]);
+    }, [activeTab, subjectMarksData, perfConfig]);
 
     useEffect(() => {
         const userDept = user?.department || 'CSE'; // Get from user profile
@@ -1369,7 +1393,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
 
             if (response.ok) {
                 const data = await response.json();
-                
+
                 const subjectMarks = {};
                 let totalCie1Acquired = 0;
                 let totalCie1Possible = 0;
@@ -1382,7 +1406,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                     if (!subjectMarks[subjName]) {
                         subjectMarks[subjName] = {};
                     }
-                    
+
                     const cType = (mark.cieType || '').replace('-', '').toUpperCase();
                     const score = mark.marks != null ? mark.marks : mark.totalScore;
 
@@ -2249,13 +2273,13 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     const renderStudentProfileModal = () => {
         if (!showProfileModal || !selectedStudentProfile) return null;
 
-        return <StudentProfileModal 
-            selectedStudentProfile={selectedStudentProfile} 
+        return <StudentProfileModal
+            selectedStudentProfile={selectedStudentProfile}
             setSelectedStudentProfile={(val) => {
                 setSelectedStudentProfile(val);
                 if (!val) setShowProfileModal(false);
-            }} 
-            selectedDept={{ name: departments.find(d => d.id === selectedDept)?.name || selectedDept }} 
+            }}
+            selectedDept={{ name: departments.find(d => d.id === selectedDept)?.name || selectedDept }}
         />;
     };
 
@@ -2405,7 +2429,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                     <div className={styles.statInfo}>
                                         <p style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                             Dept. Average
-                                            <span style={{fontSize: '0.7rem', color: '#64748b', fontWeight: 500}}>({analytics?.completedStudents || 0}/{deptStudents.length || 0} completed)</span>
+                                            <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 500 }}>({analytics?.completedStudents || 0}/{deptStudents.length || 0} completed)</span>
                                         </p>
                                         <h3 style={{ marginTop: '4px' }}>{analytics ? Math.round((analytics.average / 100) * 50 * 10) / 10 : '-'}/50</h3>
                                     </div>
@@ -2505,67 +2529,67 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                         <Skeleton width="180px" height="38px" />
                     </div>
                 ) : (
-                <div className={styles.filterGroup}>
-                <select className={styles.deptSelect} value={selectedSemester} onChange={(e) => { 
-                    setIsTableLoading(true);
-                    setSelectedSemester(e.target.value); 
-                    setSelectedSubject(null); 
-                    setTimeout(() => setIsTableLoading(false), 30);
-                }} style={{ marginRight: '10px' }}>
-                    <option value="all">All Semesters</option>
-                    {[1, 2, 3, 4, 5, 6].map(sem => (
-                        <option key={sem} value={sem}>{sem}{sem === 1 ? 'st' : sem === 2 ? 'nd' : sem === 3 ? 'rd' : 'th'} Semester</option>
-                    ))}
-                </select>
-                <select className={styles.deptSelect} value={selectedCieType} onChange={(e) => setSelectedCieType(e.target.value)} style={{ marginRight: '10px' }}>
-                    <option value="all">All CIEs & Attendance</option>
-                    <option value="cie1">CIE-1</option>
-                    <option value="cie2">CIE-2</option>
-                    <option value="cie3">CIE-3</option>
-                    <option value="cie4">CIE-4</option>
-                    <option value="cie5">CIE-5</option>
-                </select>
-                <select className={styles.deptSelect} value={selectedSubject?.id || ''} disabled={!selectedSemester || selectedSemester === 'all'} onChange={(e) => {
-                    setIsTableLoading(true);
-                    if (!e.target.value) { 
-                        setSelectedSubject(null); 
-                        setTimeout(() => setIsTableLoading(false), 30);
-                        return; 
-                    }
-                    const sub = subjects.find(s => s.id === parseInt(e.target.value));
-                    setSelectedSubject(sub);
-                    setTimeout(() => setIsTableLoading(false), 30);
-                }} style={!selectedSemester || selectedSemester === 'all' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
-                    <option value="">{!selectedSemester || selectedSemester === 'all' ? '← Select Semester First' : 'Select Subject'}</option>
-                    {selectedSemester && selectedSemester !== 'all' && (() => {
-                        const seen = new Set();
-                        // First pass: collect all clean names that have a Theory version
-                        const theoryNames = new Set();
-                        subjects.forEach(sub => {
-                            if (sub.name === 'IC') return;
-                            if (sub.semester != selectedSemester) return;
-                            if (/\(Theory\)/i.test(sub.name)) {
-                                theoryNames.add(sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim());
+                    <div className={styles.filterGroup}>
+                        <select className={styles.deptSelect} value={selectedSemester} onChange={(e) => {
+                            setIsTableLoading(true);
+                            setSelectedSemester(e.target.value);
+                            setSelectedSubject(null);
+                            setTimeout(() => setIsTableLoading(false), 30);
+                        }} style={{ marginRight: '10px' }}>
+                            <option value="all">All Semesters</option>
+                            {[1, 2, 3, 4, 5, 6].map(sem => (
+                                <option key={sem} value={sem}>{sem}{sem === 1 ? 'st' : sem === 2 ? 'nd' : sem === 3 ? 'rd' : 'th'} Semester</option>
+                            ))}
+                        </select>
+                        <select className={styles.deptSelect} value={selectedCieType} onChange={(e) => setSelectedCieType(e.target.value)} style={{ marginRight: '10px' }}>
+                            <option value="all">All CIEs & Attendance</option>
+                            <option value="cie1">CIE-1</option>
+                            <option value="cie2">CIE-2</option>
+                            <option value="cie3">CIE-3</option>
+                            <option value="cie4">CIE-4</option>
+                            <option value="cie5">CIE-5</option>
+                        </select>
+                        <select className={styles.deptSelect} value={selectedSubject?.id || ''} disabled={!selectedSemester || selectedSemester === 'all'} onChange={(e) => {
+                            setIsTableLoading(true);
+                            if (!e.target.value) {
+                                setSelectedSubject(null);
+                                setTimeout(() => setIsTableLoading(false), 30);
+                                return;
                             }
-                        });
-                        return subjects.filter(sub => {
-                            if (sub.name === 'IC') return false;
-                            if (sub.semester != selectedSemester) return false;
+                            const sub = subjects.find(s => s.id === parseInt(e.target.value));
+                            setSelectedSubject(sub);
+                            setTimeout(() => setIsTableLoading(false), 30);
+                        }} style={!selectedSemester || selectedSemester === 'all' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}>
+                            <option value="">{!selectedSemester || selectedSemester === 'all' ? '← Select Semester First' : 'Select Subject'}</option>
+                            {selectedSemester && selectedSemester !== 'all' && (() => {
+                                const seen = new Set();
+                                // First pass: collect all clean names that have a Theory version
+                                const theoryNames = new Set();
+                                subjects.forEach(sub => {
+                                    if (sub.name === 'IC') return;
+                                    if (sub.semester != selectedSemester) return;
+                                    if (/\(Theory\)/i.test(sub.name)) {
+                                        theoryNames.add(sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim());
+                                    }
+                                });
+                                return subjects.filter(sub => {
+                                    if (sub.name === 'IC') return false;
+                                    if (sub.semester != selectedSemester) return false;
 
-                            const cleanName = sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim();
-                            // Skip Lab version if a Theory version exists
-                            if (/\(Lab\)/i.test(sub.name) && theoryNames.has(cleanName)) return false;
-                            if (seen.has(cleanName)) return false;
-                            seen.add(cleanName);
-                            return true;
-                        }).map(sub => {
-                            const cleanName = sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim();
-                            return <option key={sub.id} value={sub.id}>{cleanName}</option>;
-                        });
-                    })()}
-                </select><button className={styles.saveBtn} onClick={saveMarks} disabled={selectedSemester === 'all' || !selectedSubject}><Save size={16} /> Save Changes</button></div>
+                                    const cleanName = sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim();
+                                    // Skip Lab version if a Theory version exists
+                                    if (/\(Lab\)/i.test(sub.name) && theoryNames.has(cleanName)) return false;
+                                    if (seen.has(cleanName)) return false;
+                                    seen.add(cleanName);
+                                    return true;
+                                }).map(sub => {
+                                    const cleanName = sub.name.replace(/\s*\([\w\s]+\)/gi, '').trim();
+                                    return <option key={sub.id} value={sub.id}>{cleanName}</option>;
+                                });
+                            })()}
+                        </select><button className={styles.saveBtn} onClick={saveMarks} disabled={selectedSemester === 'all' || !selectedSubject}><Save size={16} /> Save Changes</button></div>
                 )}
-                </div>
+            </div>
                 {loading || isTableLoading ? (
                     <div style={{ padding: '0 1.5rem 1.5rem 1.5rem' }}>
                         <Skeleton width="100%" height="40px" style={{ marginBottom: '1rem' }} />
@@ -2680,9 +2704,9 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                     </p><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Sl. No.</th><th>Reg No</th><th>Student Name</th><th>CIE-1</th><th>Att %</th><th>CIE-2</th><th>CIE-3</th><th>CIE-4</th><th>CIE-5</th><th>Total</th></tr></thead><tbody>{(() => { const subjectMarks = subjectMarksData[viewingSubject.name] || []; const studentsToShow = viewingSubject.status === 'Pending' ? deptStudents.filter(student => { const studentMark = subjectMarks.find(m => m.student?.regNo === student.regNo); return !studentMark || (studentMark.cie1Score === null && studentMark.cie2Score === null && studentMark.cie3Score === null); }) : deptStudents; return studentsToShow.map((student, index) => { const studentMark = subjectMarks.find(m => m.student?.regNo === student.regNo); const cie1 = studentMark?.cie1Score ?? '-'; const cie2 = studentMark?.cie2Score ?? '-'; const cie3 = studentMark?.cie3Score ?? '-'; const cie4 = studentMark?.cie4Score ?? '-'; const cie5 = studentMark?.cie5Score ?? '-'; const att = studentMark?.attendancePercentage ?? '-'; const total = (studentMark?.cie1Score || 0) + (studentMark?.cie2Score || 0) + (studentMark?.cie3Score || 0) + (studentMark?.cie4Score || 0) + (studentMark?.cie5Score || 0); return (<tr key={student.id}><td>{index + 1}</td><td>{student.regNo}</td><td>{student.name}</td><td>{cie1}</td><td>{att !== '-' ? `${att}%` : '-'}</td><td>{cie2}</td><td>{cie3}</td><td>{cie4}</td><td>{cie5}</td><td style={{ fontWeight: 'bold' }}>{studentMark ? total : '-'}</td></tr>); }); })()}</tbody></table></div></div></div></div>)}</div>)}
             {activeTab === 'performance' && (() => {
                 const perfTabs = [
-                    { id: 'excellent', label: 'Excellent Performance', color: '#10b981', bg: '#f0fdf4', borderColor: '#bcf0da', icon: <Award size={20} />, list: hodExcellentList, description: 'Students who scored more than 40/50 marks.' },
-                    { id: 'average', label: 'Average Performance', color: '#f59e0b', bg: '#fffbeb', borderColor: '#fde68a', icon: <ClipboardList size={20} />, list: hodAverageList, description: 'Students who scored between 20 and 40 marks.' },
-                    { id: 'low', label: 'Low Performance', color: '#ef4444', bg: '#fef2f2', borderColor: '#fecaca', icon: <AlertTriangle size={20} />, list: hodLowList, description: 'Students who scored 20 or fewer marks.' }
+                    { id: 'excellent', label: 'Excellent Performance', color: '#10b981', bg: '#f0fdf4', borderColor: '#bcf0da', icon: <Award size={20} />, list: hodExcellentList, description: `Students who scored more than ${perfConfig.excellent_threshold || 40}/50 marks.` },
+                    { id: 'average', label: 'Average Performance', color: '#f59e0b', bg: '#fffbeb', borderColor: '#fde68a', icon: <ClipboardList size={20} />, list: hodAverageList, description: `Students who scored between ${perfConfig.low_threshold || 20} and ${perfConfig.excellent_threshold || 40} marks.` },
+                    { id: 'low', label: 'Low Performance', color: '#ef4444', bg: '#fef2f2', borderColor: '#fecaca', icon: <AlertTriangle size={20} />, list: hodLowList, description: `Students who scored ${perfConfig.low_threshold || 20} or fewer marks.` }
                 ];
                 const activeConfig = perfTabs.find(t => t.id === hodPerformanceTab) || perfTabs[2];
                 const currentData = activeConfig.list;
@@ -2703,6 +2727,12 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                 </p>
                             </div>
                             <div style={{ display: 'flex', gap: '10px' }}>
+                                <button
+                                    onClick={() => { setEditingPerfConfig({...perfConfig}); setShowSettingsModal(true); }}
+                                    style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+                                >
+                                    <Edit size={16} /> Settings
+                                </button>
                                 <select className={styles.deptSelect} style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderRadius: '8px' }} value={hodFilterSubject} onChange={(e) => setHodFilterSubject(e.target.value)}>
                                     <option value="All">All Subjects</option>
                                     {subjects.filter(s => s.name !== 'IC').map(sub => (<option key={sub.id} value={sub.name}>{sub.name}</option>))}
@@ -2796,6 +2826,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                             <th>Student Name</th>
                                             <th>Marks</th>
                                             <th>Attendance</th>
+                                            <th>Remarks</th>
                                             <th>{hodPerformanceTab === 'low' ? 'Action' : 'Phone'}</th>
                                         </tr>
                                     </thead>
@@ -2811,6 +2842,26 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                                     </td>
                                                     <td style={{ color: activeConfig.color, fontWeight: 'bold' }}>{item.score}/50</td>
                                                     <td style={{ fontWeight: '500' }}>{item.attendance != null ? `${item.attendance}%` : 'N/A'}</td>
+                                                    <td>
+                                                        <input
+                                                            type="text"
+                                                            defaultValue={item.overallRemarks || ''}
+                                                            placeholder="Add remark..."
+                                                            style={{ width: '120px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}
+                                                            onBlur={async (e) => {
+                                                                const newRemarks = e.target.value;
+                                                                if (newRemarks === (item.overallRemarks || '')) return;
+                                                                try {
+                                                                    const res = await authenticatedFetch(`${API_BASE_URL}/hod/students/${item.regNo}/remarks`, {
+                                                                        method: 'PUT',
+                                                                        body: JSON.stringify({ remarks: newRemarks })
+                                                                    });
+                                                                    if (res.ok) showToast('Remark updated');
+                                                                    else showToast('Failed to save remark', 'error');
+                                                                } catch (err) { showToast('Error saving remark', 'error'); }
+                                                            }}
+                                                        />
+                                                    </td>
                                                     <td>
                                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                             <span style={{ fontSize: '0.85rem', fontWeight: '600', color: '#1e293b' }}>
@@ -2831,7 +2882,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                             ))
                                         ) : (
                                             <tr>
-                                                <td colSpan="6" style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
+                                                <td colSpan="7" style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
                                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
                                                         {hodPerformanceTab === 'excellent' ? <TrendingUp size={48} color="#cbd5e1" /> : <CheckCircle size={48} color="#cbd5e1" />}
                                                         <p style={{ fontSize: '1rem' }}>No students found in this category matching your filters!</p>
@@ -2843,7 +2894,51 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                 </table>
                             </div>
                         </div>
-                    </div>
+                    {/* Settings Modal for Performance Thresholds */}
+                    {showSettingsModal && (
+                        <div className={styles.modalOverlay} onClick={() => setShowSettingsModal(false)}>
+                            <div className={styles.modalContent} style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
+                                <div className={styles.modalHeader}>
+                                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Edit size={20} /> Performance Thresholds</h3>
+                                    <button className={styles.closeBtn} onClick={() => setShowSettingsModal(false)}><X size={24} /></button>
+                                </div>
+                                <div className={styles.modalBody}>
+                                    <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Configure the mark thresholds that determine Excellent, Average, and Low performance categories for your department.</p>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        <div className={styles.formGroup}>
+                                            <label style={{ fontWeight: 600 }}>Excellent Threshold (marks above this = Excellent)</label>
+                                            <input type="number" min="0" max="50" className={styles.input} value={editingPerfConfig.excellent_threshold || ''} onChange={e => setEditingPerfConfig({...editingPerfConfig, excellent_threshold: e.target.value})} />
+                                        </div>
+                                        <div className={styles.formGroup}>
+                                            <label style={{ fontWeight: 600 }}>Low Threshold (marks below this = Low)</label>
+                                            <input type="number" min="0" max="50" className={styles.input} value={editingPerfConfig.low_threshold || ''} onChange={e => setEditingPerfConfig({...editingPerfConfig, low_threshold: e.target.value})} />
+                                        </div>
+                                        <div className={styles.formGroup}>
+                                            <label style={{ fontWeight: 600 }}>Low Attendance Threshold (%)</label>
+                                            <input type="number" min="0" max="100" className={styles.input} value={editingPerfConfig.low_attendance_threshold || ''} onChange={e => setEditingPerfConfig({...editingPerfConfig, low_attendance_threshold: e.target.value})} />
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                                        <button className={styles.secondaryBtn} onClick={() => setShowSettingsModal(false)}>Cancel</button>
+                                        <button className={styles.primaryBtn} onClick={async () => {
+                                            try {
+                                                const res = await authenticatedFetch(`${API_BASE_URL}/hod/config?department=${selectedDept}`, {
+                                                    method: 'PUT',
+                                                    body: JSON.stringify(editingPerfConfig)
+                                                });
+                                                if (res.ok) {
+                                                    setPerfConfig(editingPerfConfig);
+                                                    showToast('Performance thresholds updated!');
+                                                    setShowSettingsModal(false);
+                                                } else showToast('Failed to save settings', 'error');
+                                            } catch (err) { showToast('Error saving settings', 'error'); }
+                                        }}>Save Settings</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
                 );
             })()}
             {activeTab === 'faculty' && (
