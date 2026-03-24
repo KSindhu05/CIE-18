@@ -258,6 +258,59 @@ const HODStudentRow = React.memo(({ student, index, editMark, selectedCieType, s
         prev.handleMarkChange === next.handleMarkChange;
 });
 
+// Editable remark badge: shows auto remark, click to edit, saves to backend
+const EditableRemark = ({ score, attendance, overallRemarks, onSave }) => {
+    const getAutoRemark = () => {
+        if (score != null && attendance != null) {
+            if (score <= 20 && attendance < 75) return { text: 'Low Marks, Low Att', color: '#dc2626', bg: '#fef2f2' };
+            if (score <= 20) return { text: 'Low Marks', color: '#ea580c', bg: '#fff7ed' };
+            if (attendance < 75) return { text: 'Low Attendance', color: '#ea580c', bg: '#fff7ed' };
+            if (score >= 40) return { text: 'Excellent', color: '#16a34a', bg: '#f0fdf4' };
+            return { text: 'Good', color: '#2563eb', bg: '#eff6ff' };
+        }
+        if (score != null) {
+            if (score <= 20) return { text: 'Low Marks', color: '#ea580c', bg: '#fff7ed' };
+            if (score >= 40) return { text: 'Excellent', color: '#16a34a', bg: '#f0fdf4' };
+            return { text: 'Good', color: '#2563eb', bg: '#eff6ff' };
+        }
+        return { text: '-', color: '#94a3b8', bg: 'transparent' };
+    };
+    const auto = getAutoRemark();
+    const displayText = overallRemarks || auto.text;
+    const isCustom = !!overallRemarks;
+    const [editing, setEditing] = React.useState(false);
+    const [value, setValue] = React.useState(displayText);
+    React.useEffect(() => { setValue(overallRemarks || auto.text); }, [overallRemarks, score, attendance]);
+
+    if (editing) {
+        return (
+            <input
+                autoFocus
+                type="text"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                style={{ width: '140px', padding: '3px 8px', borderRadius: '6px', border: '2px solid #3b82f6', fontSize: '0.78rem', fontWeight: 600, outline: 'none' }}
+                onBlur={async () => {
+                    setEditing(false);
+                    if (value !== (overallRemarks || auto.text)) await onSave(value);
+                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') { setValue(displayText); setEditing(false); } }}
+            />
+        );
+    }
+    return (
+        <span
+            onClick={() => { setEditing(true); setValue(displayText); }}
+            title="Click to edit"
+            style={{ fontSize: '0.78rem', fontWeight: 700, color: isCustom ? '#1e293b' : auto.color, background: isCustom ? '#f1f5f9' : auto.bg, padding: '3px 10px', borderRadius: '6px', display: 'inline-block', cursor: 'pointer', border: '1px dashed transparent', transition: 'border 0.2s' }}
+            onMouseEnter={(e) => e.target.style.borderColor = '#94a3b8'}
+            onMouseLeave={(e) => e.target.style.borderColor = 'transparent'}
+        >
+            {displayText}
+        </span>
+    );
+};
+
 const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     const { user } = useAuth();
     const { showConfirm, showPrompt } = useDialog();
@@ -655,47 +708,70 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
         }
     };
 
-    // Fetch faculty list on mount (needed for overview stat card)
+    // Orchestrated loading of all essential dashboard data
     useEffect(() => {
-        setLoading(true);
-        fetchFaculty().finally(() => setLoading(false));
-    }, [isMyDept, selectedDept, user]);
+        if (!selectedDept || !user?.token) return;
 
-    // Fetch overview data (real alerts, grade distribution)
-    useEffect(() => {
-        if (isMyDept && selectedDept && user?.token) {
-            const fetchOverview = async () => {
-                try {
-                    const response = await authenticatedFetch(`${API_BASE_URL}/hod/overview?department=${selectedDept}`);
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data.alerts) setDepartmentAlerts(data.alerts);
-                        if (data.atRiskStudents) setAtRiskStudents(data.atRiskStudents);
-                        if (data.gradeDistribution) {
-                            setHodGradeDistribution({
-                                labels: data.gradeDistribution.labels,
-                                datasets: [{
-                                    data: data.gradeDistribution.data,
-                                    backgroundColor: ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#6b7280']
-                                }]
-                            });
-                        }
-                        // Populate analytics from overview data
-                        setAnalytics({
-                            average: data.deptAverage || 0,
-                            passPercentage: data.passPercentage || 0,
-                            atRiskCount: data.atRiskCount || 0,
-                            totalStudents: data.totalStudents || 0,
-                            completedStudents: data.completedStudents || 0
+        const loadDashboardData = async () => {
+            setLoading(true);
+            try {
+                // Fire all essential fetches in parallel
+                const studentPromise = authenticatedFetch(`${API_BASE_URL}/student/all?department=${selectedDept}`);
+                const facultyPromise = authenticatedFetch(`${API_BASE_URL}/hod/faculty?department=${selectedDept}`);
+                const overviewPromise = authenticatedFetch(`${API_BASE_URL}/hod/overview?department=${selectedDept}`);
+                
+                const [studentRes, facultyRes, overviewRes] = await Promise.all([
+                    studentPromise, facultyPromise, overviewPromise
+                ]);
+
+                // 1. Handle Students
+                if (studentRes.ok) {
+                    const data = await studentRes.json();
+                    const globalUpdates = JSON.parse(localStorage.getItem('global_student_updates') || '{}');
+                    const updatedData = data.map(s => {
+                        const updates = globalUpdates[s.id];
+                        return updates ? { ...s, ...updates } : s;
+                    });
+                    setDeptStudents(updatedData);
+                    setStudents(updatedData);
+                }
+
+                // 2. Handle Faculty
+                if (facultyRes.ok) {
+                    setFacultyList(await facultyRes.json());
+                }
+
+                // 3. Handle Overview
+                if (overviewRes.ok) {
+                    const data = await overviewRes.json();
+                    if (data.alerts) setDepartmentAlerts(data.alerts);
+                    if (data.atRiskStudents) setAtRiskStudents(data.atRiskStudents);
+                    if (data.gradeDistribution) {
+                        setHodGradeDistribution({
+                            labels: data.gradeDistribution.labels,
+                            datasets: [{
+                                data: data.gradeDistribution.data,
+                                backgroundColor: ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#6b7280']
+                            }]
                         });
                     }
-                } catch (e) {
-                    console.error("Failed to fetch overview data", e);
+                    setAnalytics({
+                        average: data.deptAverage || 0,
+                        passPercentage: data.passPercentage || 0,
+                        atRiskCount: data.atRiskCount || 0,
+                        totalStudents: data.totalStudents || 0,
+                        completedStudents: data.completedStudents || 0
+                    });
                 }
-            };
-            fetchOverview();
-        }
-    }, [isMyDept, selectedDept, user]);
+            } catch (e) {
+                console.error("Dashboard data load failed", e);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadDashboardData();
+    }, [selectedDept, user]);
 
     // Fetch Subject Marks Data for IA Monitoring
     useEffect(() => {
@@ -909,79 +985,56 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
     }, [isMyDept, selectedDept]);
 
     // Compute Excellent/Average/Low performers from subjectMarksData for HOD performance tab
+    // Backend returns individual CieMark records per subject with: cieType, marks, student, attendancePercentage
     useEffect(() => {
         if (activeTab !== 'performance' || Object.keys(subjectMarksData).length === 0) return;
         const excellentThreshold = parseInt(perfConfig.excellent_threshold) || 40;
-        const lowThreshold = parseInt(perfConfig.low_threshold) || 20;
+        const averageThreshold = parseInt(perfConfig.average_threshold_min) || 20;
+        const lowThreshold = parseInt(perfConfig.low_threshold) || 15;
         const excellent = [];
         const average = [];
         const low = [];
+        // Build lookup from deptStudents for fresh remarks/phone data
+        const studentLookup = {};
+        deptStudents.forEach(s => {
+            if (s.id) studentLookup[s.id] = s;
+            if (s.regNo) studentLookup[s.regNo] = s;
+        });
         Object.entries(subjectMarksData).forEach(([subjectName, marks]) => {
             if (!Array.isArray(marks)) return;
             marks.forEach(m => {
-                const cieEntries = [
-                    { type: 'CIE1', score: m.cie1Score, att: m.attendancePercentage },
-                    { type: 'CIE2', score: m.cie2Score, att: m.attendancePercentage },
-                    { type: 'CIE3', score: m.cie3Score, att: m.attendancePercentage },
-                    { type: 'CIE4', score: m.cie4Score, att: m.attendancePercentage },
-                    { type: 'CIE5', score: m.cie5Score, att: m.attendancePercentage }
-                ];
-                cieEntries.forEach(cie => {
-                    if (cie.score == null) return;
-                    const record = {
-                        studentId: m.student?.id || m.studentId,
-                        regNo: m.student?.regNo || '-',
-                        name: m.student?.name || '-',
-                        subject: subjectName,
-                        cieType: cie.type,
-                        score: cie.score,
-                        attendance: cie.att,
-                        parentPhone: m.student?.parentPhone || m.student?.phone || '',
-                        overallRemarks: m.student?.overallRemarks || ''
-                    };
-                    if (cie.score > excellentThreshold) excellent.push(record);
-                    else if (cie.score >= lowThreshold) average.push(record);
-                    else low.push(record);
-                });
+                // Each record is a single CieMark: { cieType, marks, student, attendancePercentage, ... }
+                const score = m.marks != null ? m.marks : (m.totalScore != null ? m.totalScore : null);
+                if (score == null) return;
+                const sid = m.student?.id || m.studentId;
+                const regNo = m.student?.regNo || '-';
+                // Look up full student data from deptStudents for remarks & phone
+                const fullStudent = studentLookup[sid] || studentLookup[regNo] || {};
+                const record = {
+                    studentId: sid,
+                    regNo: regNo,
+                    name: m.student?.name || fullStudent.name || '-',
+                    subject: subjectName,
+                    cieType: m.cieType || '-',
+                    score: score,
+                    attendance: m.attendancePercentage,
+                    parentPhone: fullStudent.parentPhone || fullStudent.phone || m.student?.parentPhone || m.student?.phone || '',
+                    overallRemarks: fullStudent.overallRemarks || m.student?.overallRemarks || '',
+                    remarks: m.remarks || ''
+                };
+                if (score >= excellentThreshold) excellent.push(record);
+                else if (score >= averageThreshold) average.push(record);
+                else low.push(record);
             });
         });
         setHodExcellentList(excellent);
         setHodAverageList(average);
         setHodLowList(low);
-    }, [activeTab, subjectMarksData, perfConfig]);
+    }, [activeTab, subjectMarksData, perfConfig, deptStudents]);
 
     useEffect(() => {
-        const userDept = user?.department || 'CSE'; // Get from user profile
-        const isAuthorized = selectedDept === userDept; // For now assuming admin/HOD access
         setIsMyDept(true); // Allow viewing specific departments
-
-        const fetchStudents = async () => {
-            try {
-                const response = await authenticatedFetch(`${API_BASE_URL}/student/all?department=${selectedDept}`);
-                if (response.ok) {
-                    const data = await response.json();
-
-                    // --- GLOBAL SYNC: Check for updates ---
-                    const globalUpdates = JSON.parse(localStorage.getItem('global_student_updates') || '{}');
-                    const updatedData = data.map(s => {
-                        const updates = globalUpdates[s.id];
-                        return updates ? { ...s, ...updates } : s;
-                    });
-
-                    setDeptStudents(updatedData);
-                    setStudents(updatedData);
-                } else {
-                    setDeptStudents([]);
-                    setStudents([]);
-                }
-            } catch (e) {
-                console.error("Failed to fetch students", e);
-            }
-        };
-
-        if (selectedDept) {
-            fetchStudents();
-        } else {
+        if (!selectedDept) {
             setDeptStudents([]); setStudents([]); setSubjects([]); setSelectedSubject(null);
         }
     }, [selectedDept, user]);
@@ -2703,16 +2756,68 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                         Status: <span className={`${styles.statusBadge} ${viewingSubject.status === 'Approved' ? styles.approved : viewingSubject.status === 'Submitted' ? styles.submitted : styles.pending}`} style={{ marginLeft: '10px' }}>{viewingSubject.status}</span>
                                     </p><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Sl. No.</th><th>Reg No</th><th>Student Name</th><th>CIE-1</th><th>Att %</th><th>CIE-2</th><th>CIE-3</th><th>CIE-4</th><th>CIE-5</th><th>Total</th></tr></thead><tbody>{(() => { const subjectMarks = subjectMarksData[viewingSubject.name] || []; const studentsToShow = viewingSubject.status === 'Pending' ? deptStudents.filter(student => { const studentMark = subjectMarks.find(m => m.student?.regNo === student.regNo); return !studentMark || (studentMark.cie1Score === null && studentMark.cie2Score === null && studentMark.cie3Score === null); }) : deptStudents; return studentsToShow.map((student, index) => { const studentMark = subjectMarks.find(m => m.student?.regNo === student.regNo); const cie1 = studentMark?.cie1Score ?? '-'; const cie2 = studentMark?.cie2Score ?? '-'; const cie3 = studentMark?.cie3Score ?? '-'; const cie4 = studentMark?.cie4Score ?? '-'; const cie5 = studentMark?.cie5Score ?? '-'; const att = studentMark?.attendancePercentage ?? '-'; const total = (studentMark?.cie1Score || 0) + (studentMark?.cie2Score || 0) + (studentMark?.cie3Score || 0) + (studentMark?.cie4Score || 0) + (studentMark?.cie5Score || 0); return (<tr key={student.id}><td>{index + 1}</td><td>{student.regNo}</td><td>{student.name}</td><td>{cie1}</td><td>{att !== '-' ? `${att}%` : '-'}</td><td>{cie2}</td><td>{cie3}</td><td>{cie4}</td><td>{cie5}</td><td style={{ fontWeight: 'bold' }}>{studentMark ? total : '-'}</td></tr>); }); })()}</tbody></table></div></div></div></div>)}</div>)}
             {activeTab === 'performance' && (() => {
-                const perfTabs = [
-                    { id: 'excellent', label: 'Excellent Performance', color: '#10b981', bg: '#f0fdf4', borderColor: '#bcf0da', icon: <Award size={20} />, list: hodExcellentList, description: `Students who scored more than ${perfConfig.excellent_threshold || 40}/50 marks.` },
-                    { id: 'average', label: 'Average Performance', color: '#f59e0b', bg: '#fffbeb', borderColor: '#fde68a', icon: <ClipboardList size={20} />, list: hodAverageList, description: `Students who scored between ${perfConfig.low_threshold || 20} and ${perfConfig.excellent_threshold || 40} marks.` },
-                    { id: 'low', label: 'Low Performance', color: '#ef4444', bg: '#fef2f2', borderColor: '#fecaca', icon: <AlertTriangle size={20} />, list: hodLowList, description: `Students who scored ${perfConfig.low_threshold || 20} or fewer marks.` }
-                ];
-                const activeConfig = perfTabs.find(t => t.id === hodPerformanceTab) || perfTabs[2];
-                const currentData = activeConfig.list;
-                const filteredList = currentData
+                const applyFilters = (list) => list
                     .filter(item => hodFilterSubject === 'All' || item.subject === hodFilterSubject)
                     .filter(item => hodFilterCIE === 'All' || item.cieType === hodFilterCIE);
+                const getUniqueStudentCount = (list) => new Set(list.map(s => s.studentId || s.regNo)).size;
+                const filteredExcellent = applyFilters(hodExcellentList);
+                const filteredAverage = applyFilters(hodAverageList);
+                const filteredLow = applyFilters(hodLowList);
+                const perfTabs = [
+                    { id: 'excellent', label: 'Excellent Performance', color: '#10b981', bg: '#f0fdf4', borderColor: '#bcf0da', icon: <Award size={20} />, list: filteredExcellent, studentCount: getUniqueStudentCount(filteredExcellent), description: `Students who scored more than ${perfConfig.excellent_threshold || 40}/50 marks.` },
+                    { id: 'average', label: 'Average Performance', color: '#f59e0b', bg: '#fffbeb', borderColor: '#fde68a', icon: <ClipboardList size={20} />, list: filteredAverage, studentCount: getUniqueStudentCount(filteredAverage), description: `Students who scored between ${perfConfig.average_threshold_min || 20} and ${perfConfig.excellent_threshold || 40} marks.` },
+                    { id: 'low', label: 'Low Performance', color: '#ef4444', bg: '#fef2f2', borderColor: '#fecaca', icon: <AlertTriangle size={20} />, list: filteredLow, studentCount: getUniqueStudentCount(filteredLow), description: `Students who scored below ${perfConfig.average_threshold_min || 20} marks.` }
+                ];
+                const activeConfig = perfTabs.find(t => t.id === hodPerformanceTab) || perfTabs[2];
+                const filteredList = activeConfig.list;
+
+                if (loading) {
+                    return (
+                        <div className={styles.performanceContainer}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
+                                <div>
+                                    <Skeleton width="250px" height="24px" style={{ marginBottom: '8px' }} />
+                                    <Skeleton width="350px" height="14px" />
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <Skeleton width="100px" height="38px" style={{ borderRadius: '8px' }} />
+                                    <Skeleton width="150px" height="38px" style={{ borderRadius: '8px' }} />
+                                    <Skeleton width="100px" height="38px" style={{ borderRadius: '8px' }} />
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: '12px', marginBottom: '1.5rem', background: '#f8fafc', padding: '6px', borderRadius: '12px', width: 'fit-content' }}>
+                                {[1, 2, 3].map(i => <Skeleton key={i} width="160px" height="40px" style={{ borderRadius: '10px' }} />)}
+                            </div>
+                            <div className={styles.card} style={{ borderTop: `4px solid #e2e8f0` }}>
+                                <div style={{ padding: '1.5rem', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <Skeleton variant="circle" width="20px" height="20px" />
+                                            <Skeleton width="150px" height="18px" />
+                                        </div>
+                                        <Skeleton width="300px" height="12px" style={{ marginTop: '0.4rem' }} />
+                                    </div>
+                                </div>
+                                <div className={styles.tableWrapper}>
+                                    <table className={styles.table}>
+                                        <thead>
+                                            <tr>{[1, 2, 3, 4, 5, 6, 7].map(i => <th key={i}><Skeleton width="60px" height="14px" /></th>)}</tr>
+                                        </thead>
+                                        <tbody>
+                                            {Array.from({ length: 5 }).map((_, i) => (
+                                                <tr key={i}>
+                                                    {Array.from({ length: 7 }).map((_, j) => (
+                                                        <td key={j}><Skeleton width={j === 2 ? "120px" : "60px"} height="14px" /></td>
+                                                    ))}
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
 
                 return (
                     <div className={styles.performanceContainer}>
@@ -2728,16 +2833,16 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                             </div>
                             <div style={{ display: 'flex', gap: '10px' }}>
                                 <button
-                                    onClick={() => { setEditingPerfConfig({...perfConfig}); setShowSettingsModal(true); }}
-                                    style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#f8fafc', color: '#475569', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}
+                                    onClick={() => { setEditingPerfConfig({ ...perfConfig }); setShowSettingsModal(true); }}
+                                    className={styles.settingsBtn}
                                 >
                                     <Edit size={16} /> Settings
                                 </button>
-                                <select className={styles.deptSelect} style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderRadius: '8px' }} value={hodFilterSubject} onChange={(e) => setHodFilterSubject(e.target.value)}>
+                                <select className={styles.filterSelect} value={hodFilterSubject} onChange={(e) => setHodFilterSubject(e.target.value)}>
                                     <option value="All">All Subjects</option>
                                     {subjects.filter(s => s.name !== 'IC').map(sub => (<option key={sub.id} value={sub.name}>{sub.name}</option>))}
                                 </select>
-                                <select className={styles.deptSelect} style={{ padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderRadius: '8px' }} value={hodFilterCIE} onChange={(e) => setHodFilterCIE(e.target.value)}>
+                                <select className={styles.filterSelect} value={hodFilterCIE} onChange={(e) => setHodFilterCIE(e.target.value)}>
                                     <option value="All">All CIE</option>
                                     {['CIE1', 'CIE2', 'CIE3', 'CIE4', 'CIE5'].map(cie => (<option key={cie} value={cie}>{cie}</option>))}
                                 </select>
@@ -2761,13 +2866,13 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                 >
                                     {tab.icon}
                                     {tab.label}
-                                    {tab.list.length > 0 && (
+                                    {tab.studentCount > 0 && (
                                         <span style={{
                                             backgroundColor: hodPerformanceTab === tab.id ? tab.bg : '#e2e8f0',
                                             color: hodPerformanceTab === tab.id ? tab.color : '#64748b',
                                             borderRadius: '20px', padding: '2px 8px', fontSize: '0.75rem'
                                         }}>
-                                            {tab.list.length}
+                                            {tab.studentCount}
                                         </span>
                                     )}
                                 </button>
@@ -2833,7 +2938,7 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                     <tbody>
                                         {filteredList.length > 0 ? (
                                             filteredList.map((item, i) => (
-                                                <tr key={i}>
+                                                <tr key={`${item.studentId}-${item.cieType}-${item.subject}`}>
                                                     <td style={{ color: '#64748b' }}>{i + 1}</td>
                                                     <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{item.regNo}</td>
                                                     <td>
@@ -2843,20 +2948,37 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                                     <td style={{ color: activeConfig.color, fontWeight: 'bold' }}>{item.score}/50</td>
                                                     <td style={{ fontWeight: '500' }}>{item.attendance != null ? `${item.attendance}%` : 'N/A'}</td>
                                                     <td>
-                                                        <input
-                                                            type="text"
-                                                            defaultValue={item.overallRemarks || ''}
-                                                            placeholder="Add remark..."
-                                                            style={{ width: '120px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.8rem' }}
-                                                            onBlur={async (e) => {
-                                                                const newRemarks = e.target.value;
-                                                                if (newRemarks === (item.overallRemarks || '')) return;
+                                                        <EditableRemark
+                                                            score={item.score}
+                                                            attendance={item.attendance}
+                                                            overallRemarks={item.remarks}
+                                                            onSave={async (newRemarks) => {
                                                                 try {
-                                                                    const res = await authenticatedFetch(`${API_BASE_URL}/hod/students/${item.regNo}/remarks`, {
+                                                                    const res = await authenticatedFetch(`${API_BASE_URL}/hod/students/${item.regNo}/subjects/${encodeURIComponent(item.subject)}/cie/${encodeURIComponent(item.cieType)}/remarks`, {
                                                                         method: 'PUT',
                                                                         body: JSON.stringify({ remarks: newRemarks })
                                                                     });
-                                                                    if (res.ok) showToast('Remark updated');
+                                                                    if (res.ok) {
+                                                                        showToast('Remark updated');
+                                                                        const updateList = (list) => list.map(s =>
+                                                                            (s.regNo === item.regNo && s.subject === item.subject && s.cieType === item.cieType) ? { ...s, remarks: newRemarks } : s
+                                                                        );
+                                                                        setHodExcellentList(prev => updateList(prev));
+                                                                        setHodAverageList(prev => updateList(prev));
+                                                                        setHodLowList(prev => updateList(prev));
+
+                                                                        // Sync global subjectMarksData state
+                                                                        setSubjectMarksData(prev => {
+                                                                            const newData = { ...prev };
+                                                                            const subKey = item.subject;
+                                                                            if (newData[subKey]) {
+                                                                                newData[subKey] = newData[subKey].map(m =>
+                                                                                    (m.student?.regNo === item.regNo && m.cieType === item.cieType) ? { ...m, remarks: newRemarks } : m
+                                                                                );
+                                                                            }
+                                                                            return newData;
+                                                                        });
+                                                                    }
                                                                     else showToast('Failed to save remark', 'error');
                                                                 } catch (err) { showToast('Error saving remark', 'error'); }
                                                             }}
@@ -2894,51 +3016,58 @@ const HODDashboard = ({ isSpectator = false, spectatorDept = null }) => {
                                 </table>
                             </div>
                         </div>
-                    {/* Settings Modal for Performance Thresholds */}
-                    {showSettingsModal && (
-                        <div className={styles.modalOverlay} onClick={() => setShowSettingsModal(false)}>
-                            <div className={styles.modalContent} style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
-                                <div className={styles.modalHeader}>
-                                    <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Edit size={20} /> Performance Thresholds</h3>
-                                    <button className={styles.closeBtn} onClick={() => setShowSettingsModal(false)}><X size={24} /></button>
-                                </div>
-                                <div className={styles.modalBody}>
-                                    <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Configure the mark thresholds that determine Excellent, Average, and Low performance categories for your department.</p>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                        <div className={styles.formGroup}>
-                                            <label style={{ fontWeight: 600 }}>Excellent Threshold (marks above this = Excellent)</label>
-                                            <input type="number" min="0" max="50" className={styles.input} value={editingPerfConfig.excellent_threshold || ''} onChange={e => setEditingPerfConfig({...editingPerfConfig, excellent_threshold: e.target.value})} />
-                                        </div>
-                                        <div className={styles.formGroup}>
-                                            <label style={{ fontWeight: 600 }}>Low Threshold (marks below this = Low)</label>
-                                            <input type="number" min="0" max="50" className={styles.input} value={editingPerfConfig.low_threshold || ''} onChange={e => setEditingPerfConfig({...editingPerfConfig, low_threshold: e.target.value})} />
-                                        </div>
-                                        <div className={styles.formGroup}>
-                                            <label style={{ fontWeight: 600 }}>Low Attendance Threshold (%)</label>
-                                            <input type="number" min="0" max="100" className={styles.input} value={editingPerfConfig.low_attendance_threshold || ''} onChange={e => setEditingPerfConfig({...editingPerfConfig, low_attendance_threshold: e.target.value})} />
-                                        </div>
+                        {/* Settings Modal for Performance Thresholds */}
+                        {showSettingsModal && (
+                            <div className={styles.modalOverlay} onClick={() => setShowSettingsModal(false)}>
+                                <div className={styles.modalContent} style={{ maxWidth: '450px' }} onClick={e => e.stopPropagation()}>
+                                    <div className={styles.modalHeader}>
+                                        <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Edit size={20} /> Performance Thresholds</h3>
+                                        <button className={styles.closeBtn} onClick={() => setShowSettingsModal(false)}><X size={24} /></button>
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
-                                        <button className={styles.secondaryBtn} onClick={() => setShowSettingsModal(false)}>Cancel</button>
-                                        <button className={styles.primaryBtn} onClick={async () => {
-                                            try {
-                                                const res = await authenticatedFetch(`${API_BASE_URL}/hod/config?department=${selectedDept}`, {
-                                                    method: 'PUT',
-                                                    body: JSON.stringify(editingPerfConfig)
-                                                });
-                                                if (res.ok) {
-                                                    setPerfConfig(editingPerfConfig);
-                                                    showToast('Performance thresholds updated!');
-                                                    setShowSettingsModal(false);
-                                                } else showToast('Failed to save settings', 'error');
-                                            } catch (err) { showToast('Error saving settings', 'error'); }
-                                        }}>Save Settings</button>
+                                    <div className={styles.modalBody}>
+                                        <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Configure the mark thresholds that determine Excellent, Average, and Low performance categories for your department.</p>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                            <div className={styles.formGroup}>
+                                                <label style={{ fontWeight: 600 }}>Excellent Threshold (marks above this = Excellent)</label>
+                                                <input type="number" min="0" max="50" className={styles.input} value={editingPerfConfig.excellent_threshold || ''} onChange={e => setEditingPerfConfig({ ...editingPerfConfig, excellent_threshold: e.target.value })} />
+                                            </div>
+                                            <div className={styles.formGroup}>
+                                                <label style={{ fontWeight: 600 }}>Average Threshold (marks above this = Average)</label>
+                                                <input type="number" min="0" max="50" className={styles.input} value={editingPerfConfig.average_threshold_min || ''} onChange={e => setEditingPerfConfig({ ...editingPerfConfig, average_threshold_min: e.target.value })} />
+                                            </div>
+                                            <div className={styles.formGroup}>
+                                                <label style={{ fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
+                                                    <span>Low Threshold (marks below this = At Risk)</span>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 400, color: '#f59e0b' }}>Used for alerts</span>
+                                                </label>
+                                                <input type="number" min="0" max="50" className={styles.input} value={editingPerfConfig.low_threshold || ''} onChange={e => setEditingPerfConfig({ ...editingPerfConfig, low_threshold: e.target.value })} />
+                                            </div>
+                                            <div className={styles.formGroup}>
+                                                <label style={{ fontWeight: 600 }}>Low Attendance Threshold (%)</label>
+                                                <input type="number" min="0" max="100" className={styles.input} value={editingPerfConfig.low_attendance_threshold || ''} onChange={e => setEditingPerfConfig({ ...editingPerfConfig, low_attendance_threshold: e.target.value })} />
+                                            </div>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                                            <button className={styles.secondaryBtn} onClick={() => setShowSettingsModal(false)}>Cancel</button>
+                                            <button className={styles.primaryBtn} onClick={async () => {
+                                                try {
+                                                    const res = await authenticatedFetch(`${API_BASE_URL}/hod/config?department=${selectedDept}`, {
+                                                        method: 'PUT',
+                                                        body: JSON.stringify(editingPerfConfig)
+                                                    });
+                                                    if (res.ok) {
+                                                        setPerfConfig(editingPerfConfig);
+                                                        showToast('Performance thresholds updated!');
+                                                        setShowSettingsModal(false);
+                                                    } else showToast('Failed to save settings', 'error');
+                                                } catch (err) { showToast('Error saving settings', 'error'); }
+                                            }}>Save Settings</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
                 );
             })()}
             {activeTab === 'faculty' && (

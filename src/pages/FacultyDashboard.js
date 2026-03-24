@@ -337,19 +337,8 @@ const FacultyDashboard = () => {
     });
     const [performanceTab, setPerformanceTab] = useState('low'); // 'excellent', 'average', 'low'
 
-    // Mentorship State
-    const [menteeIds, setMenteeIds] = useState(() => {
-        const saved = localStorage.getItem(`mentees_${user?.id}`);
-        if (saved) return JSON.parse(saved);
-
-        // Default IDs from the image (459CS25001 - 459CS25007 precisely)
-        const defaultRegs = ['459CS25001', '459CS25002', '459CS25003', '459CS25005', '459CS25007'];
-        const foundIds = students
-            .filter(s => defaultRegs.includes(s.regNo) || defaultRegs.includes(s.rollNo))
-            .map(s => s.id);
-
-        return foundIds.length > 0 ? foundIds : [];
-    });
+    // Mentorship State — derived from backend student.mentor field via sync useEffect below
+    const [menteeIds, setMenteeIds] = useState([]);
     const [showMenteeModal, setShowMenteeModal] = useState(false);
     const [menteeSearchTerm, setMenteeSearchTerm] = useState('');
     const [manualMentees, setManualMentees] = useState(() => {
@@ -395,16 +384,29 @@ const FacultyDashboard = () => {
         return { ...s };
     });
 
-    const handleAddMentee = (studentId) => {
-        if (menteeIds.includes(studentId)) {
-            showToast('Student already in mentorship list', 'warning');
-            return;
+    const handleAddMentee = async (studentId) => {
+        try {
+            const response = await authenticatedFetch(`${API_BASE_URL}/student/${studentId}/mentor`, {
+                method: 'PUT',
+                body: JSON.stringify({ mentor: user.fullName || user.username || 'Faculty' })
+            });
+
+            if (response.ok) {
+                // Update local state immediately for responsiveness
+                setStudents(prev => prev.map(s => s.id === studentId ? { ...s, mentor: user.fullName || user.username || 'Faculty' } : s));
+                
+                // Update menteeIds for the "Mentorship" tab filtering
+                setMenteeIds(prev => [...new Set([...prev, studentId])]);
+                
+                showToast('Mentee added successfully');
+                setShowMenteeModal(false);
+            } else {
+                showToast('Failed to add mentee to backend', 'error');
+            }
+        } catch (e) {
+            console.error("Mentor sync failed", e);
+            showToast('Connection error', 'error');
         }
-        const newIds = [...menteeIds, studentId];
-        setMenteeIds(newIds);
-        localStorage.setItem(`mentees_${user?.id}`, JSON.stringify(newIds));
-        showToast('Mentee added successfully');
-        setShowMenteeModal(false);
     };
 
     const handleAddManualStudent = (e) => {
@@ -422,17 +424,34 @@ const FacultyDashboard = () => {
         showToast('Student added successfully');
     };
 
-    const handleRemoveMentee = (studentId) => {
+    const handleRemoveMentee = async (studentId) => {
         if (typeof studentId === 'string' && studentId.startsWith('manual_')) {
             const newList = manualMentees.filter(m => m.id !== studentId);
             setManualMentees(newList);
             localStorage.setItem(`manual_mentees_${user?.id}`, JSON.stringify(newList));
-        } else {
-            const newIds = menteeIds.filter(id => id !== studentId);
-            setMenteeIds(newIds);
-            localStorage.setItem(`mentees_${user?.id}`, JSON.stringify(newIds));
+            showToast('Mentee removed', 'info');
+            return;
         }
-        showToast('Mentee removed', 'info');
+
+        try {
+            const response = await authenticatedFetch(`${API_BASE_URL}/student/${studentId}/mentor`, {
+                method: 'PUT',
+                body: JSON.stringify({ mentor: null })
+            });
+
+            if (response.ok) {
+                // Update local state
+                setStudents(prev => prev.map(s => s.id === studentId ? { ...s, mentor: null } : s));
+                
+                setMenteeIds(prev => prev.filter(id => id !== studentId));
+                
+                showToast('Mentee removed', 'info');
+            } else {
+                showToast('Failed to remove mentee from backend', 'info');
+            }
+        } catch (e) {
+            console.error("Mentor remove failed", e);
+        }
     };
 
     const handleEditStudent = (student) => {
@@ -492,6 +511,21 @@ const FacultyDashboard = () => {
             fetchAnalytics();
         }
     }, [activeSection, fetchAnalytics]);
+
+    // Sync menteeIds from backend data (if students have this faculty as mentor)
+    React.useEffect(() => {
+        if (students.length > 0 && user?.fullName) {
+            const backedIds = students
+                .filter(s => s.mentor && (s.mentor === user.fullName || s.mentor === user.username))
+                .map(s => s.id);
+            
+            // Replace menteeIds with backend-derived list (source of truth is DB)
+            setMenteeIds(prev => {
+                const combined = [...new Set([...prev, ...backedIds])];
+                return combined;
+            });
+        }
+    }, [students, user]);
 
     React.useEffect(() => {
         if (!user || !user.token) return;

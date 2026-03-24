@@ -271,7 +271,8 @@ public class HodController {
         // Calculate department average and pass rate for all students with graded marks
         List<com.example.ia.payload.response.StudentResponse> studentsResp = studentService
                 .getStudentsWithAnalytics(department);
-        long studentsWithMarks = studentsResp.stream().filter(s -> s.getOverallCie1Percentage() != null && s.getOverallCie1Percentage() > 0).count();
+        long studentsWithMarks = studentsResp.stream()
+                .filter(s -> s.getOverallCie1Percentage() != null && s.getOverallCie1Percentage() > 0).count();
 
         double deptAvg = 0;
         double deptPassRate = 0;
@@ -1071,6 +1072,33 @@ public class HodController {
             student.setOverallRemarks(remarks);
             studentRepository.save(student);
             return ResponseEntity.ok(Map.of("message", "Remarks updated successfully"));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/students/{regNo}/subjects/{subjectName}/cie/{cieType}/remarks")
+    @PreAuthorize("hasRole('HOD') or hasRole('PRINCIPAL')")
+    @Transactional
+    public ResponseEntity<?> updateSubjectRemarks(@PathVariable String regNo,
+            @PathVariable String subjectName,
+            @PathVariable String cieType,
+            @RequestBody Map<String, String> body,
+            @AuthenticationPrincipal UserDetailsImpl userDetails) {
+        String remarks = body.get("remarks");
+        return studentRepository.findByRegNo(regNo).map(student -> {
+            com.example.ia.entity.Subject subject = subjectRepository.findFirstByNameAndDepartment(subjectName, student.getDepartment())
+                    .orElse(subjectRepository.findFirstByName(subjectName).orElse(null));
+            if (subject == null) return ResponseEntity.notFound().build();
+
+            com.example.ia.entity.CieMark mark = cieMarkRepository.findByStudent_IdAndSubject_IdAndCieType(student.getId(), subject.getId(), cieType)
+                    .orElse(null);
+            if (mark != null) {
+                mark.setRemarks(remarks);
+                mark.setStatus("APPROVED");
+                cieMarkRepository.save(mark);
+                return ResponseEntity.ok(Map.of("message", "Subject remarks updated successfully"));
+            } else {
+                return ResponseEntity.notFound().build();
+            }
         }).orElse(ResponseEntity.notFound().build());
     }
 

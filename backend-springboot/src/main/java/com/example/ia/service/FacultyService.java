@@ -15,6 +15,9 @@ import com.example.ia.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.example.ia.entity.SystemConfig;
+import com.example.ia.repository.SystemConfigRepository;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -39,6 +42,9 @@ public class FacultyService {
 
     @Autowired
     private FacultyAssignmentRequestRepository assignmentRequestRepository;
+
+    @Autowired
+    private SystemConfigRepository systemConfigRepository;
 
     // ---------------------------------------------------------------
     // Parse the comma-separated section field into a list of sections.
@@ -254,6 +260,26 @@ public class FacultyService {
     }
 
     public FacultyClassAnalytics getAnalytics(String username) {
+        User user = userRepository.findByUsername(username).orElse(null);
+        String department = user != null ? user.getDepartment() : null;
+
+        // Fetch department-specific configurations
+        double excellentThreshold = 40.0;
+        double lowThreshold = 20.0;
+        
+        if (department != null) {
+            List<SystemConfig> configs = systemConfigRepository.findByDepartment(department);
+            for (SystemConfig cfg : configs) {
+                try {
+                    if ("excellent_threshold".equals(cfg.getConfigKey())) {
+                        excellentThreshold = Double.parseDouble(cfg.getConfigValue());
+                    } else if ("low_threshold".equals(cfg.getConfigKey())) {
+                        lowThreshold = Double.parseDouble(cfg.getConfigValue());
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
         List<Student> allowedStudents = getStudentsForFaculty(username);
         Set<Long> allowedStudentIds = allowedStudents.stream().map(Student::getId).collect(Collectors.toSet());
 
@@ -290,12 +316,12 @@ public class FacultyService {
                             mark.getCieType(), score, mark.getAttendancePercentage(),
                             mark.getStudent().getParentPhone());
 
-                    if (score <= 20) {
+                    if (score <= lowThreshold) {
                         low++;
                         lowList.add(record);
-                    } else if (score > 20 && score <= 40) {
+                    } else if (score > lowThreshold && score <= excellentThreshold) {
                         averageList.add(record);
-                    } else if (score > 40) {
+                    } else if (score > excellentThreshold) {
                         top++;
                         excellentList.add(record);
                     }

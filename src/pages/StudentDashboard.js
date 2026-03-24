@@ -50,7 +50,8 @@ const StudentDashboard = () => {
         rollNo: user?.username || '...',
         branch: '...',
         semester: '...',
-        cgpa: 0
+        cgpa: 0,
+        mentor: 'Not Assigned'
     });
 
     React.useEffect(() => {
@@ -83,6 +84,7 @@ const StudentDashboard = () => {
                                 code: mark.subject.code.replace(/[-(\s]+(T|L|Theory|Lab)$/i, '').trim(),
                                 cie1Score: null, cie2Score: null, cie3Score: null, cie4Score: null, cie5Score: null,
                                 cie1Att: null, cie2Att: null, cie3Att: null, cie4Att: null, cie5Att: null,
+                                cie1Remark: null, cie2Remark: null, cie3Remark: null, cie4Remark: null, cie5Remark: null,
                                 totalScore: 0,
                                 subjectIds: new Set([mark.subject.id])
                             };
@@ -91,12 +93,14 @@ const StudentDashboard = () => {
 
                         const score = mark.totalScore;
                         const att = mark.attendancePercentage;
+                        const rem = mark.remarks;
 
-                        if (mark.cieType === 'CIE1') { groupedMarks[baseName].cie1Score = score; groupedMarks[baseName].cie1Att = att; }
-                        else if (mark.cieType === 'CIE2') { groupedMarks[baseName].cie2Score = score; groupedMarks[baseName].cie2Att = att; }
-                        else if (mark.cieType === 'CIE3') { groupedMarks[baseName].cie3Score = score; groupedMarks[baseName].cie3Att = att; }
-                        else if (mark.cieType === 'CIE4') { groupedMarks[baseName].cie4Score = score; groupedMarks[baseName].cie4Att = att; }
-                        else if (mark.cieType === 'CIE5') { groupedMarks[baseName].cie5Score = score; groupedMarks[baseName].cie5Att = att; }
+                        const type = (mark.cieType || '').replace('-', '').toUpperCase();
+                        if (type === 'CIE1') { groupedMarks[baseName].cie1Score = score; groupedMarks[baseName].cie1Att = att; groupedMarks[baseName].cie1Remark = rem; }
+                        else if (type === 'CIE2') { groupedMarks[baseName].cie2Score = score; groupedMarks[baseName].cie2Att = att; groupedMarks[baseName].cie2Remark = rem; }
+                        else if (type === 'CIE3') { groupedMarks[baseName].cie3Score = score; groupedMarks[baseName].cie3Att = att; groupedMarks[baseName].cie3Remark = rem; }
+                        else if (type === 'CIE4') { groupedMarks[baseName].cie4Score = score; groupedMarks[baseName].cie4Att = att; groupedMarks[baseName].cie4Remark = rem; }
+                        else if (type === 'CIE5') { groupedMarks[baseName].cie5Score = score; groupedMarks[baseName].cie5Att = att; groupedMarks[baseName].cie5Remark = rem; }
                     });
 
                     Object.values(groupedMarks).forEach(item => {
@@ -113,17 +117,17 @@ const StudentDashboard = () => {
 
                     if (data.length > 0) {
                         const s = data[0].student;
-                        
+
                         // Automated Remarks Logic
                         const mThreshold = parseInt(perfConfig.low_threshold) || 20;
                         const aThreshold = parseInt(perfConfig.low_attendance_threshold) || 75;
                         let lowPerfCount = 0;
                         Object.values(groupedMarks).forEach(m => {
                             const isLow = (m.cie1Score != null && m.cie1Score < mThreshold) || (m.cie1Att != null && m.cie1Att < aThreshold) ||
-                                          (m.cie2Score != null && m.cie2Score < mThreshold) || (m.cie2Att != null && m.cie2Att < aThreshold) ||
-                                          (m.cie3Score != null && m.cie3Score < mThreshold) || (m.cie3Att != null && m.cie3Att < aThreshold) ||
-                                          (m.cie4Score != null && m.cie4Score < mThreshold) || (m.cie4Att != null && m.cie4Att < aThreshold) ||
-                                          (m.cie5Score != null && m.cie5Score < mThreshold) || (m.cie5Att != null && m.cie5Att < aThreshold);
+                                (m.cie2Score != null && m.cie2Score < mThreshold) || (m.cie2Att != null && m.cie2Att < aThreshold) ||
+                                (m.cie3Score != null && m.cie3Score < mThreshold) || (m.cie3Att != null && m.cie3Att < aThreshold) ||
+                                (m.cie4Score != null && m.cie4Score < mThreshold) || (m.cie4Att != null && m.cie4Att < aThreshold) ||
+                                (m.cie5Score != null && m.cie5Score < mThreshold) || (m.cie5Att != null && m.cie5Att < aThreshold);
                             if (isLow) lowPerfCount++;
                         });
 
@@ -141,6 +145,7 @@ const StudentDashboard = () => {
                             cgpa: aggregatePercentage,
                             avgCieScore: `${avgScore50}/50`,
                             parentPhone: s.parentPhone,
+                            mentor: s.mentor || 'Not Assigned',
                             overallRemarks: s.overallRemarks ? `${s.overallRemarks}${autoRemark ? ' | ' + autoRemark : ''}` : (autoRemark || "Consistent performance.")
                         }));
                         if (s.department) fetchPerfConfig(s.department);
@@ -152,7 +157,7 @@ const StudentDashboard = () => {
                                 const s = await profileRes.json();
                                 setStudentInfo(prev => ({
                                     ...prev,
-                                    name: s.name, rollNo: s.regNo, branch: s.department, semester: s.semester, parentPhone: s.parentPhone
+                                    name: s.name, rollNo: s.regNo, branch: s.department, semester: s.semester, parentPhone: s.parentPhone, mentor: s.mentor || 'Not Assigned'
                                 }));
                                 setSelectedSemester(s.semester.toString());
                                 if (s.department) fetchPerfConfig(s.department);
@@ -219,16 +224,18 @@ const StudentDashboard = () => {
         { label: 'Subjects', path: '/dashboard/student', icon: <Book size={20} />, isActive: activeSection === 'Subjects', onClick: () => setActiveSection('Subjects') },
         { label: 'Faculty', path: '/dashboard/student', icon: <User size={20} />, isActive: activeSection === 'Faculty', onClick: () => setActiveSection('Faculty') },
         { label: 'Syllabus Topics', path: '/dashboard/student', icon: <BookOpen size={20} />, isActive: activeSection === 'Syllabus Topics', onClick: () => setActiveSection('Syllabus Topics') },
-        { label: 'Notifications', path: '/dashboard/student', icon: <Bell size={20} />, isActive: activeSection === 'Notifications', onClick: async () => {
-            setActiveSection('Notifications');
-            setUnreadCount(0);
-            setNotifications(prev => prev.map(n => ({...n, isRead: true})));
-            try {
-                await authenticatedFetch(`${API_BASE_URL}/notifications/read-all`, { method: 'POST' });
-            } catch (e) {
-                console.error("Failed to mark all as read", e);
-            }
-        }, badge: unreadCount || null },
+        {
+            label: 'Notifications', path: '/dashboard/student', icon: <Bell size={20} />, isActive: activeSection === 'Notifications', onClick: async () => {
+                setActiveSection('Notifications');
+                setUnreadCount(0);
+                setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+                try {
+                    await authenticatedFetch(`${API_BASE_URL}/notifications/read-all`, { method: 'POST' });
+                } catch (e) {
+                    console.error("Failed to mark all as read", e);
+                }
+            }, badge: unreadCount || null
+        },
     ];
 
     const showToast = (message) => { setToast({ show: true, message }); setTimeout(() => setToast({ show: false, message: '' }), 3000); };
@@ -270,19 +277,30 @@ const StudentDashboard = () => {
     const renderOverview = () => {
         // Determine the latest CIE that has any marks across all subjects
         const cieKeys = [
-            { key: 'cie5Score', att: 'cie5Att', label: 'CIE-5' },
-            { key: 'cie4Score', att: 'cie4Att', label: 'CIE-4' },
-            { key: 'cie3Score', att: 'cie3Att', label: 'CIE-3' },
-            { key: 'cie2Score', att: 'cie2Att', label: 'CIE-2' },
-            { key: 'cie1Score', att: 'cie1Att', label: 'CIE-1' },
+            { id: '5', key: 'cie5Score', att: 'cie5Att', remark: 'cie5Remark', label: 'CIE-5' },
+            { id: '4', key: 'cie4Score', att: 'cie4Att', remark: 'cie4Remark', label: 'CIE-4' },
+            { id: '3', key: 'cie3Score', att: 'cie3Att', remark: 'cie3Remark', label: 'CIE-3' },
+            { id: '2', key: 'cie2Score', att: 'cie2Att', remark: 'cie2Remark', label: 'CIE-2' },
+            { id: '1', key: 'cie1Score', att: 'cie1Att', remark: 'cie1Remark', label: 'CIE-1' },
         ];
-        let latestCie = { key: 'cie1Score', att: 'cie1Att', label: 'CIE-1' }; // default
+        let latestCie = { key: 'cie1Score', att: 'cie1Att', remark: 'cie1Remark', label: 'CIE-1' }; // default
         for (const cie of cieKeys) {
             if (realMarks.some(m => m[cie.key] != null)) {
                 latestCie = cie;
                 break;
             }
         }
+
+        // Count subjects with low marks or attendance in the latest CIE
+        const mThreshold = parseInt(perfConfig.low_threshold) || 20;
+        const aThreshold = parseInt(perfConfig.low_attendance_threshold) || 75;
+        const eThreshold = parseInt(perfConfig.excellent_threshold) || 40;
+        let lowSubjectCount = 0;
+        realMarks.forEach(mark => {
+            const s = mark[latestCie.key];
+            const a = mark[latestCie.att];
+            if ((s != null && s <= mThreshold) || (a != null && a < aThreshold)) lowSubjectCount++;
+        });
 
         return (
             <div className={styles.detailsContainer}>
@@ -331,13 +349,29 @@ const StudentDashboard = () => {
                                                 {(() => {
                                                     const score = cieScore != null ? parseFloat(cieScore) : null;
                                                     const att = cieAtt != null ? parseFloat(cieAtt) : null;
+                                                    const customRemark = mark[latestCie.remark];
                                                     if (score == null) return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
+                                                    const isLowMarks = score <= mThreshold;
+                                                    const isLowAtt = att != null && att < aThreshold;
+                                                    const isLow = isLowMarks || isLowAtt;
                                                     let remark = ''; let color = '#64748b'; let bg = 'transparent';
-                                                    if (score < 25 && att != null && att < 75) { remark = `${latestCie.label}: Marks & Att Low - Meet HOD`; color = '#dc2626'; bg = '#fef2f2'; }
-                                                    else if (score < 25) { remark = `${latestCie.label}: Marks Low - Meet HOD`; color = '#ea580c'; bg = '#fff7ed'; }
-                                                    else if (att != null && att < 75) { remark = `${latestCie.label}: Att Low - Meet HOD`; color = '#ea580c'; bg = '#fff7ed'; }
-                                                    else if (score >= 40 && (att == null || att >= 75)) { remark = 'Excellent'; color = '#15803d'; bg = '#f0fdf4'; }
-                                                    else { remark = 'Good'; color = '#2563eb'; bg = '#eff6ff'; }
+                                                    if (customRemark) {
+                                                        remark = customRemark;
+                                                        color = '#4f46e5'; bg = '#eef2ff'; // Indigo for HOD custom remarks
+                                                    } else if (isLow && lowSubjectCount >= 3) {
+                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: Low Marks & Att - Come meet HOD` : isLowMarks ? `${latestCie.label}: Low Marks - Come meet HOD` : `${latestCie.label}: Low Att - Come meet HOD`;
+                                                        color = '#dc2626'; bg = '#fef2f2';
+                                                    } else if (isLow && lowSubjectCount >= 2) {
+                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: Low Marks & Att - Contact Mentor` : isLowMarks ? `${latestCie.label}: Low Marks - Contact Mentor` : `${latestCie.label}: Low Att - Contact Mentor`;
+                                                        color = '#ea580c'; bg = '#fff7ed';
+                                                    } else if (isLow) {
+                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: Low Marks & Att` : isLowMarks ? `${latestCie.label}: Low Marks` : `${latestCie.label}: Low Att`;
+                                                        color = '#ea580c'; bg = '#fff7ed';
+                                                    } else if (score >= eThreshold && (att == null || att >= aThreshold)) {
+                                                        remark = 'Excellent'; color = '#15803d'; bg = '#f0fdf4';
+                                                    } else {
+                                                        remark = 'Good'; color = '#2563eb'; bg = '#eff6ff';
+                                                    }
                                                     return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
                                                         <div style={{ fontSize: '0.72rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{remark}</div>
                                                     </td>;
@@ -360,7 +394,7 @@ const StudentDashboard = () => {
                     realMarks.forEach(mark => {
                         const score = mark[latestCie.key];
                         const att = mark[latestCie.att];
-                        if ((score != null && score < 25) || (att != null && att < 75)) {
+                        if ((score != null && score <= mThreshold) || (att != null && att < aThreshold)) {
                             lowSubjectsCount++;
                             lowSubjectNames.push(mark.name);
                         }
@@ -376,7 +410,7 @@ const StudentDashboard = () => {
                         messageColor = '#dc2626';
                         messageBg = '#fef2f2';
                         messageBorder = '#fecaca';
-                    } else if (lowSubjectsCount === 2) {
+                    } else if (lowSubjectsCount >= 2) {
                         overallMessage = `📋 You have low marks or attendance in ${lowSubjectsCount} subjects (${lowSubjectNames.join(', ')}). Please contact your mentor for guidance.`;
                         messageColor = '#ea580c';
                         messageBg = '#fff7ed';
@@ -387,9 +421,12 @@ const StudentDashboard = () => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                             {overallMessage && (
                                 <div className={styles.card} style={{ border: `1px solid ${messageBorder}`, background: messageBg, animationDelay: '0.3s' }}>
-                                    <div style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <AlertCircle size={24} style={{ color: messageColor, flexShrink: 0 }} />
-                                        <span style={{ color: messageColor, fontWeight: 600, fontSize: '0.95rem' }}>{overallMessage}</span>
+                                    <div style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                                        <AlertCircle size={24} style={{ color: messageColor, flexShrink: 0, marginTop: '2px' }} />
+                                        <div>
+                                            <span style={{ fontSize: '0.8rem', color: messageColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Overall Remarks</span>
+                                            <p style={{ margin: '4px 0 0 0', color: messageColor, fontWeight: 600, fontSize: '0.95rem' }}>{overallMessage}</p>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -415,16 +452,16 @@ const StudentDashboard = () => {
 
     const downloadCIEMarks = (subjects, filter) => {
         const doc = new jsPDF();
-        
+
         // Add Header
         doc.setFontSize(18);
         doc.setTextColor(30, 58, 138); // Academic Blue
         doc.text('CIE MARKS REPORT', 105, 15, { align: 'center' });
-        
+
         doc.setFontSize(14);
         doc.setTextColor(30, 41, 59);
         doc.text('Sanjay Gandhi Polytechnic', 105, 22, { align: 'center' });
-        
+
         // Add Student Info
         doc.setFontSize(10);
         doc.setTextColor(100, 116, 139);
@@ -478,6 +515,10 @@ const StudentDashboard = () => {
         const theorySubjects = [];
         let hasDataForSelectedCIE = false;
 
+        const mThr = parseInt(perfConfig.low_threshold) || 20;
+        const aThr = parseInt(perfConfig.low_attendance_threshold) || 75;
+        const eThr = parseInt(perfConfig.excellent_threshold) || 40;
+
         realSubjects.forEach(sub => {
             if (sub.semester && sub.semester.toString() !== selectedSemester) return;
             const mark = realMarks.find(m => m.name === sub.name) || {};
@@ -508,6 +549,11 @@ const StudentDashboard = () => {
                 cie3Att: fmt(mark.cie3Att),
                 cie4Att: fmt(mark.cie4Att),
                 cie5Att: fmt(mark.cie5Att),
+                cie1Remark: mark.cie1Remark,
+                cie2Remark: mark.cie2Remark,
+                cie3Remark: mark.cie3Remark,
+                cie4Remark: mark.cie4Remark,
+                cie5Remark: mark.cie5Remark,
                 total: mark.totalScore || 0
             });
         });
@@ -583,13 +629,17 @@ const StudentDashboard = () => {
                                     {theorySubjects.map((row, idx) => {
                                         const getCieRemark = (v, a, label) => {
                                             if (v == null || isNaN(v) || a == null || isNaN(a)) return null;
-                                            const mThr = parseInt(perfConfig.low_threshold) || 20;
-                                            const aThr = parseInt(perfConfig.low_attendance_threshold) || 75;
-                                            const eThr = parseInt(perfConfig.excellent_threshold) || 40;
 
-                                            const isLowMarks = v < mThr;
+                                            const isLowMarks = v <= mThr;
                                             const isLowAtt = a < aThr;
                                             const isExcellent = v >= eThr && a >= aThr;
+                                            
+                                            let text = '';
+                                            if (isLowMarks && isLowAtt) { text = `Low Marks & Att`; }
+                                            else if (isLowMarks) { text = `Low Marks`; }
+                                            else if (isLowAtt) { text = `Low Att`; }
+                                            else if (isExcellent) { text = `${label}: Excellent`; }
+                                            else { text = `${label}: Good`; }
 
                                             return {
                                                 label,
@@ -597,19 +647,16 @@ const StudentDashboard = () => {
                                                 lowAtt: isLowAtt,
                                                 excellent: isExcellent,
                                                 severity: (isLowMarks && isLowAtt) ? 3 : (isLowMarks ? 2 : (isLowAtt ? 2 : 0)),
-                                                text: (isLowMarks && isLowAtt) ? `Contact Mentor: Low Marks & Att` :
-                                                    (isLowMarks ? `Contact Mentor: Low Marks` :
-                                                        (isLowAtt ? `Contact Mentor: Low Att` :
-                                                            (isExcellent ? `${label}: Excellent` : `${label}: Good`)))
+                                                text
                                             };
                                         };
 
                                         const allCies = [
-                                            getCieRemark(row.cie1 !== '-' ? parseFloat(row.cie1) : null, row.cie1Att !== '-' ? parseFloat(row.cie1Att) : null, 'CIE-1'),
-                                            getCieRemark(row.cie2 !== '-' ? parseFloat(row.cie2) : null, row.cie2Att !== '-' ? parseFloat(row.cie2Att) : null, 'CIE-2'),
-                                            getCieRemark(row.cie3 !== '-' ? parseFloat(row.cie3) : null, row.cie3Att !== '-' ? parseFloat(row.cie3Att) : null, 'CIE-3'),
-                                            getCieRemark(row.cie4 !== '-' ? parseFloat(row.cie4) : null, row.cie4Att !== '-' ? parseFloat(row.cie4Att) : null, 'CIE-4'),
-                                            getCieRemark(row.cie5 !== '-' ? parseFloat(row.cie5) : null, row.cie5Att !== '-' ? parseFloat(row.cie5Att) : null, 'CIE-5')
+                                            row.cie1Remark ? { label: 'CIE-1', text: row.cie1Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie1 !== '-' ? parseFloat(row.cie1) : null, row.cie1Att !== '-' ? parseFloat(row.cie1Att) : null, 'CIE-1'),
+                                            row.cie2Remark ? { label: 'CIE-2', text: row.cie2Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie2 !== '-' ? parseFloat(row.cie2) : null, row.cie2Att !== '-' ? parseFloat(row.cie2Att) : null, 'CIE-2'),
+                                            row.cie3Remark ? { label: 'CIE-3', text: row.cie3Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie3 !== '-' ? parseFloat(row.cie3) : null, row.cie3Att !== '-' ? parseFloat(row.cie3Att) : null, 'CIE-3'),
+                                            row.cie4Remark ? { label: 'CIE-4', text: row.cie4Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie4 !== '-' ? parseFloat(row.cie4) : null, row.cie4Att !== '-' ? parseFloat(row.cie4Att) : null, 'CIE-4'),
+                                            row.cie5Remark ? { label: 'CIE-5', text: row.cie5Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie5 !== '-' ? parseFloat(row.cie5) : null, row.cie5Att !== '-' ? parseFloat(row.cie5Att) : null, 'CIE-5')
                                         ];
                                         const filled = allCies.filter(r => r !== null);
 
@@ -628,11 +675,19 @@ const StudentDashboard = () => {
                                             let textParts = [];
                                             if (lowMarksCies.length > 0) textParts.push(`${lowMarksCies.join(',')} Low Marks`);
                                             if (lowAttCies.length > 0) textParts.push(`${lowAttCies.join(',')} Low Att`);
-                                            if (textParts.length === 0) {
+                                            
+                                            const hasCustom = filled.some(r => r.custom);
+                                            if (hasCustom) {
+                                                const customTexts = filled.filter(r => r.custom).map(r => r.text);
+                                                finalRemark = customTexts.join(' | ');
+                                                finalColor = '#4f46e5'; finalBg = '#eef2ff';
+                                            } else if (textParts.length === 0) {
                                                 const allExcellent = filled.every(r => r.excellent);
                                                 textParts.push(allExcellent ? 'All Excellent' : 'All Good');
+                                                finalRemark = textParts.join(' | ');
+                                            } else {
+                                                finalRemark = textParts.join(' | ');
                                             }
-                                            finalRemark = textParts.join(' | ');
                                         } else if (selectedCIE !== 'All') {
                                             let target = null;
                                             if (selectedCIE === 'CIE-1') target = allCies[0];
@@ -643,8 +698,12 @@ const StudentDashboard = () => {
 
                                             if (target) {
                                                 finalRemark = target.text;
-                                                finalColor = target.severity >= 3 ? '#dc2626' : target.severity >= 2 ? '#ea580c' : target.severity === 0 ? '#15803d' : '#2563eb';
-                                                finalBg = target.severity >= 3 ? '#fef2f2' : target.severity >= 2 ? '#fff7ed' : '#f0fdf4';
+                                                if (target.custom) {
+                                                    finalColor = '#4f46e5'; finalBg = '#eef2ff';
+                                                } else {
+                                                    finalColor = target.severity >= 3 ? '#dc2626' : target.severity >= 2 ? '#ea580c' : target.severity === 0 ? '#15803d' : '#2563eb';
+                                                    finalBg = target.severity >= 3 ? '#fef2f2' : target.severity >= 2 ? '#fff7ed' : '#f0fdf4';
+                                                }
                                             }
                                         }
 

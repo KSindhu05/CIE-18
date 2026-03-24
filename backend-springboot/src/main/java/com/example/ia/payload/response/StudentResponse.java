@@ -18,6 +18,7 @@ public class StudentResponse {
     private Boolean isCie1Complete;
     private Double overallCie1Percentage;
     private String overallRemarks;
+    private String mentor;
 
     // Mocked fields for UI
     private String feesStatus = "Paid";
@@ -41,6 +42,7 @@ public class StudentResponse {
         this.isCie1Complete = isCie1Complete;
         this.overallCie1Percentage = overallCie1Percentage;
         this.overallRemarks = student.getOverallRemarks();
+        this.mentor = student.getMentor();
     }
 
     // Getters and Setters
@@ -110,6 +112,10 @@ public class StudentResponse {
 
     public String getOverallRemarks() {
         return overallRemarks;
+    }
+
+    public String getMentor() {
+        return mentor;
     }
 
     public void setOverallRemarks(String overallRemarks) {
