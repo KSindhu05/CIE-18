@@ -8,7 +8,7 @@ import styles from './PrincipalDashboard.module.css';
 import {
     LayoutDashboard, Users, ShieldCheck, Calendar, BarChart2,
     Briefcase, Bell, AlertTriangle, FileText, Building, LogOut,
-    RotateCw, Settings, Trash2, GraduationCap
+    RotateCw, Settings, Trash2, GraduationCap, User
 } from 'lucide-react';
 import headerLogo from '../assets/header_logo.png';
 
@@ -20,6 +20,7 @@ import ComplianceSection from '../components/dashboard/principal/ComplianceSecti
 import DepartmentSection from '../components/dashboard/principal/DepartmentSection';
 // import FacultySection from '../components/dashboard/principal/FacultySection'; // Replaced by FacultyDirectorySection
 import { DirectorySection } from '../components/dashboard/principal/DirectorySection';
+
 import {
     FacultyDirectorySection, CIEScheduleSection,
     ReportsSection, NotificationsSection, ManageHODsSection
@@ -170,8 +171,10 @@ const PrincipalDashboard = () => {
         { label: 'CIE Schedule', path: '#timetables', icon: <Calendar size={20} />, isActive: activeTab === 'timetables', onClick: () => setActiveTab('timetables') },
         { label: 'CIE Compliance', path: '#compliance', icon: <ShieldCheck size={20} />, isActive: activeTab === 'compliance', onClick: () => setActiveTab('compliance') },
         { label: 'Reports & Analytics', path: '#reports', icon: <FileText size={20} />, isActive: activeTab === 'reports', onClick: () => setActiveTab('reports') },
+        { label: 'My Profile', category: 'Account', path: '#profile', icon: <User size={20} />, isActive: activeTab === 'profile', onClick: () => setActiveTab('profile') },
         { 
             label: 'Notifications', 
+            category: 'Account',
             path: '#notifications', 
             icon: <Bell size={20} />, 
             isActive: activeTab === 'notifications', 
@@ -869,6 +872,7 @@ const PrincipalDashboard = () => {
                         </div>
                     </div>
                 )}
+                {activeTab === 'profile' && <ProfileModal inline={true} />}
             </div>
 
 

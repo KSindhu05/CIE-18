@@ -12,8 +12,17 @@ import AcademicSummary from '../components/dashboard/student/AcademicSummary';
 import AcademicInsights from '../components/dashboard/student/AcademicInsights';
 import authenticatedFetch from '../utils/authFetch';
 import Skeleton from '../components/ui/Skeleton';
+import { StudentTranslations } from '../utils/StudentTranslations';
 
 const StudentDashboard = () => {
+    const [lang, setLang] = useState(() => localStorage.getItem('studentLang') || 'EN');
+    const t = (key) => StudentTranslations[lang][key] || key;
+    
+    const toggleLang = () => {
+        const newLang = lang === 'EN' ? 'KN' : 'EN';
+        setLang(newLang);
+        localStorage.setItem('studentLang', newLang);
+    };
     const [activeSection, setActiveSection] = useState(() => {
         return sessionStorage.getItem('studentActiveSection') || 'Overview';
     });
@@ -109,60 +118,42 @@ const StudentDashboard = () => {
 
                     setRealMarks(Object.values(groupedMarks));
 
-                    const recordsWithMarks = data.filter(m => m.totalScore != null && m.totalScore > 0);
-                    const totalMarks = recordsWithMarks.reduce((sum, m) => sum + (m.totalScore || 0), 0);
-                    const totalMaxMarks = recordsWithMarks.reduce((sum, m) => sum + (m.subject?.maxMarks || 50), 0);
-                    const aggregatePercentage = totalMaxMarks > 0 ? ((totalMarks / totalMaxMarks) * 100).toFixed(1) : 0;
-                    let avgScore50 = totalMaxMarks > 0 ? Math.round((totalMarks / totalMaxMarks) * 50) : 0;
-
+                    setRealMarks(Object.values(groupedMarks));
                     if (data.length > 0) {
                         const s = data[0].student;
-
-                        // Automated Remarks Logic
-                        const mThreshold = parseInt(perfConfig.low_threshold) || 20;
-                        const aThreshold = parseInt(perfConfig.low_attendance_threshold) || 75;
-                        let lowPerfCount = 0;
-                        Object.values(groupedMarks).forEach(m => {
-                            const isLow = (m.cie1Score != null && m.cie1Score < mThreshold) || (m.cie1Att != null && m.cie1Att < aThreshold) ||
-                                (m.cie2Score != null && m.cie2Score < mThreshold) || (m.cie2Att != null && m.cie2Att < aThreshold) ||
-                                (m.cie3Score != null && m.cie3Score < mThreshold) || (m.cie3Att != null && m.cie3Att < aThreshold) ||
-                                (m.cie4Score != null && m.cie4Score < mThreshold) || (m.cie4Att != null && m.cie4Att < aThreshold) ||
-                                (m.cie5Score != null && m.cie5Score < mThreshold) || (m.cie5Att != null && m.cie5Att < aThreshold);
-                            if (isLow) lowPerfCount++;
-                        });
-
-                        let autoRemark = '';
-                        if (lowPerfCount >= 3) autoRemark = "🚨 Come meet HOD immediately due to poor performance/attendance in 3+ subjects.";
-                        else if (lowPerfCount === 2) autoRemark = "⚠️ Contact your Mentor; performance is low in 2 subjects.";
-                        else if (lowPerfCount === 1) autoRemark = "Contact Mentor for improvement in one subject.";
-
                         setStudentInfo(prev => ({
                             ...prev,
                             name: s.name,
                             rollNo: s.regNo,
                             branch: s.department,
                             semester: s.semester,
-                            cgpa: aggregatePercentage,
-                            avgCieScore: `${avgScore50}/50`,
                             parentPhone: s.parentPhone,
-                            mentor: s.mentor || 'Not Assigned',
-                            overallRemarks: s.overallRemarks ? `${s.overallRemarks}${autoRemark ? ' | ' + autoRemark : ''}` : (autoRemark || "Consistent performance.")
+                            overallRemarks: s.overallRemarks || prev.overallRemarks,
+                            mentor: s.mentor || 'Not Assigned'
                         }));
                         if (s.department) fetchPerfConfig(s.department);
                         setSelectedSemester(s.semester.toString());
-                    } else {
-                        try {
-                            const profileRes = await authenticatedFetch(`${API_BASE_URL}/student/profile`);
-                            if (profileRes.ok) {
-                                const s = await profileRes.json();
-                                setStudentInfo(prev => ({
-                                    ...prev,
-                                    name: s.name, rollNo: s.regNo, branch: s.department, semester: s.semester, parentPhone: s.parentPhone, mentor: s.mentor || 'Not Assigned'
-                                }));
-                                setSelectedSemester(s.semester.toString());
-                                if (s.department) fetchPerfConfig(s.department);
-                            }
-                        } catch (e) { console.error("Failed to fetch student profile", e); }
+                    }
+                    
+                    // Always refresh detailed profile for Live Mentor Name
+                    try {
+                        const profileRes = await authenticatedFetch(`${API_BASE_URL}/student/profile`);
+                        if (profileRes.ok) {
+                            const p = await profileRes.json();
+                            setStudentInfo(prev => ({
+                                ...prev,
+                                name: p.name,
+                                rollNo: p.regNo,
+                                branch: p.department,
+                                semester: p.semester,
+                                parentPhone: p.parentPhone,
+                                mentor: (p.mentor && p.mentor !== 'Not Assigned') ?
+                                    (lang === 'KN' ? (p.mentorKn || transliterateName(p.mentor, lang)) : p.mentor) : null,
+                                mentorKn: p.mentorKn
+                            }));
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch student profile", e);
                     }
                     const uniqueCIEs = new Set(data.filter(m => m.totalScore != null && m.totalScore > 0).map(m => m.cieType));
                     setCieStatus(`${uniqueCIEs.size}/5`);
@@ -214,18 +205,44 @@ const StudentDashboard = () => {
         fetchUpdates().finally(() => setLoading(false));
     }, [user]);
 
+    // Reactive Analytics: Update CGPA / Avg Score based on total semester subjects
+    React.useEffect(() => {
+        if (!realMarks || realMarks.length === 0) return;
+        
+        const totalMarks = realMarks.reduce((sum, m) => sum + (m.totalScore || 0), 0);
+        
+        // Denominator based on LOADED subjects if realSubjects exists, otherwise fallback to marks count
+        const subjectsCount = realSubjects.length > 0 ? realSubjects.length : realMarks.length;
+        const totalMaxMarks = subjectsCount * 50;
+
+        const aggregatePercentage = totalMaxMarks > 0 ? ((totalMarks / totalMaxMarks) * 100).toFixed(1) : 0;
+        const avgScore50 = totalMaxMarks > 0 ? Math.round((totalMarks / totalMaxMarks) * 50) : 0;
+
+        // Calculate Average Attendance (Real)
+        const attRecords = realMarks.filter(m => m.cie1Att != null || m.cie2Att != null || m.cie3Att != null);
+        const totalAtt = attRecords.reduce((sum, m) => sum + (m.cie1Att || m.cie2Att || m.cie3Att || 0), 0);
+        const avgAttendance = attRecords.length > 0 ? totalAtt / attRecords.length : 100;
+
+        setStudentInfo(prev => ({
+            ...prev,
+            cgpa: aggregatePercentage,
+            avgCieScore: `${avgScore50}/50`,
+            avgAttendance: avgAttendance
+        }));
+    }, [realMarks, realSubjects]);
+
     const [selectedSemester, setSelectedSemester] = useState('5');
     const [selectedCIE, setSelectedCIE] = useState('All');
 
     const menuItems = [
-        { label: 'Overview', path: '/dashboard/student', icon: <LayoutDashboard size={20} />, isActive: activeSection === 'Overview', onClick: () => setActiveSection('Overview') },
-        { label: 'CIE Marks', path: '/dashboard/student', icon: <FileText size={20} />, isActive: activeSection === 'CIE Marks', onClick: () => setActiveSection('CIE Marks') },
+        { label: t('overview'), path: '/dashboard/student', icon: <LayoutDashboard size={20} />, isActive: activeSection === 'Overview', onClick: () => setActiveSection('Overview') },
+        { label: t('cieMarks'), path: '/dashboard/student', icon: <FileText size={20} />, isActive: activeSection === 'CIE Marks', onClick: () => setActiveSection('CIE Marks') },
 
-        { label: 'Subjects', path: '/dashboard/student', icon: <Book size={20} />, isActive: activeSection === 'Subjects', onClick: () => setActiveSection('Subjects') },
-        { label: 'Faculty', path: '/dashboard/student', icon: <User size={20} />, isActive: activeSection === 'Faculty', onClick: () => setActiveSection('Faculty') },
-        { label: 'Syllabus Topics', path: '/dashboard/student', icon: <BookOpen size={20} />, isActive: activeSection === 'Syllabus Topics', onClick: () => setActiveSection('Syllabus Topics') },
+        { label: t('subjects'), path: '/dashboard/student', icon: <Book size={20} />, isActive: activeSection === 'Subjects', onClick: () => setActiveSection('Subjects') },
+        { label: t('faculty'), path: '/dashboard/student', icon: <User size={20} />, isActive: activeSection === 'Faculty', onClick: () => setActiveSection('Faculty') },
+        { label: t('syllabusTopics'), path: '/dashboard/student', icon: <BookOpen size={20} />, isActive: activeSection === 'Syllabus Topics', onClick: () => setActiveSection('Syllabus Topics') },
         {
-            label: 'Notifications', path: '/dashboard/student', icon: <Bell size={20} />, isActive: activeSection === 'Notifications', onClick: async () => {
+            label: t('notifications'), path: '/dashboard/student', icon: <Bell size={20} />, isActive: activeSection === 'Notifications', onClick: async () => {
                 setActiveSection('Notifications');
                 setUnreadCount(0);
                 setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
@@ -242,22 +259,58 @@ const StudentDashboard = () => {
     const handleDownload = () => window.print();
     const getStatus = (marks, max) => {
         const percentage = (marks / max) * 100; // Fixed percentage calc
-        if (percentage >= 90) return { label: 'Distinction', color: 'var(--success)', bg: 'rgba(22, 163, 74, 0.1)' };
-        if (percentage >= 75) return { label: 'First Class', color: 'var(--secondary)', bg: 'rgba(59, 130, 246, 0.1)' };
-        if (percentage >= 60) return { label: 'Second Class', color: 'var(--warning)', bg: 'rgba(245, 158, 11, 0.1)' };
-        return { label: 'At Risk', color: 'var(--danger)', bg: 'rgba(220, 38, 38, 0.1)' };
+        if (percentage >= 90) return { label: t('distinction'), color: 'var(--success)', bg: 'rgba(22, 163, 74, 0.1)' };
+        if (percentage >= 75) return { label: t('firstClass'), color: 'var(--secondary)', bg: 'rgba(59, 130, 246, 0.1)' };
+        if (percentage >= 60) return { label: t('secondClass'), color: 'var(--warning)', bg: 'rgba(245, 158, 11, 0.1)' };
+        return { label: t('atRisk'), color: 'var(--danger)', bg: 'rgba(220, 38, 38, 0.1)' };
     };
     const getRemarks = (marks, max) => {
         const percentage = (marks / max) * 100;
-        if (percentage >= 85) return "Excellent performance! Keep it up.";
-        if (percentage >= 70) return "Good understanding. Focus on weak areas.";
-        if (percentage >= 50) return "Average. Needs more consistent effort.";
-        return "Critical: Please meet the faculty.";
+        if (percentage >= 85) return t('excPerf');
+        if (percentage >= 70) return t('goodUnd');
+        if (percentage >= 50) return t('avgEffort');
+        return t('critMeet');
+    };
+    const transliterateName = (name, targetLang, nameKn, mentorKn) => {
+        if (targetLang === 'EN' || !name || name === 'Loading...') return name;
+        if (nameKn) return nameKn;
+        if (mentorKn) return mentorKn;
+
+        // Comprehensive phonetic map for initials, sounds and titles
+        const phoneticMap = {
+            'MR': 'ಶ್ರೀ', 'MRS': 'ಶ್ರೀಮತಿ', 'MISS': 'ಕುಮಾರಿ', 'DR': 'ಡಾ.',
+            'A': 'ಎ', 'B': 'ಬಿ', 'C': 'ಸಿ', 'D': 'ಡಿ', 'E': 'ಇ', 'F': 'ಎಫ್', 'G': 'ಜಿ', 'H': 'ಹೆಚ್', 'I': 'ಐ', 'J': 'ಜೆ', 'K': 'ಕೆ', 'L': 'ಎಲ್', 'M': 'ಎಂ', 'N': 'ಎನ್', 'O': 'ಓ', 'P': 'ಪಿ', 'Q': 'ಕ್ಯೂ', 'R': 'ಆರ್', 'S': 'ಎಸ್', 'T': 'ಟಿ', 'U': 'ಯು', 'V': 'ವಿ', 'W': 'ಡಬ್ಲ್ಯೂ', 'X': 'ಎಕ್ಸ್', 'Y': 'ವೈ', 'Z': 'ಜೆಡ್',
+            'SH': 'ಶ', 'CH': 'ಚ', 'TH': 'ಥ', 'KH': 'ಖ', 'GH': 'ಘ', 'BH': 'ಭ', 'DH': 'ಧ', 'EE': 'ೀ', 'OO': 'ೂ', 'AI': 'ೈ', 'OU': 'ೌ'
+        };
+
+        const parts = name.toUpperCase().split(/\s+/);
+        const translatedParts = parts.map(part => {
+            if (part.length === 1 && phoneticMap[part]) {
+                return phoneticMap[part];
+            }
+            if (part === 'ABHISHEKA') return 'ಅಭಿಷೇಕ';
+            if (part === 'KAVITHA') return 'ಕವಿತಾ';
+            if (part === 'SANJAY') return 'ಸಂಜಯ್';
+
+            let result = part;
+            Object.keys(phoneticMap).filter(k => k.length > 1).sort((a, b) => b.length - a.length).forEach(key => {
+                const regex = new RegExp(key, 'g');
+                result = result.replace(regex, phoneticMap[key]);
+            });
+            // Final pass for single letters in complex names (basic)
+            Object.keys(phoneticMap).filter(k => k.length === 1).forEach(key => {
+                const regex = new RegExp(key, 'g');
+                result = result.replace(regex, phoneticMap[key].toLowerCase());
+            });
+            return result;
+        });
+
+        return translatedParts.join(' ');
     };
 
     // Typewriter Effect Logic
     const [typedText, setTypedText] = useState('');
-    const welcomeMessage = `Welcome, ${studentInfo.name !== 'Loading...' ? studentInfo.name : 'Student'} 👋`;
+    const welcomeMessage = `${t('welcome')}, ${studentInfo.name !== 'Loading...' ? transliterateName(studentInfo.name, lang, studentInfo.nameKn) : (lang === 'KN' ? 'ವಿದ್ಯಾರ್ಥಿ' : 'Student')} 👋`;
 
     React.useEffect(() => {
         if (studentInfo.name === 'Loading...') return;
@@ -272,7 +325,7 @@ const StudentDashboard = () => {
             }
         }, 50); // Speed of typing
         return () => clearInterval(typingInterval);
-    }, [studentInfo.name]);
+    }, [studentInfo.name, lang, welcomeMessage]);
 
     const renderOverview = () => {
         // Determine the latest CIE that has any marks across all subjects
@@ -307,11 +360,11 @@ const StudentDashboard = () => {
                 <div className={styles.contentGrid}>
                     <div className={styles.card} style={{ animationDelay: '0.2s' }}>
                         <div className={styles.cardHeader} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h2 className={styles.cardTitle} style={{ margin: 0 }}>📑 Current Semester CIE Performance</h2>
+                            <h2 className={styles.cardTitle} style={{ margin: 0 }}>📑 {t('currentCiePerf')}</h2>
                         </div>
                         <div className={styles.tableContainer}>
                             <table className={styles.table}>
-                                <thead><tr><th>Subject</th><th>{latestCie.label}</th><th>Att %</th><th>Total Progress</th><th style={{ background: '#fefce8', color: '#a16207' }}>Remarks</th></tr></thead>
+                                <thead><tr><th>{t('subjects')}</th><th>{latestCie.label}</th><th>{t('attendance')} %</th><th>{t('totalProgress')}</th><th style={{ background: '#fefce8', color: '#a16207' }}>{t('remarks')}</th></tr></thead>
                                 <tbody>
                                     {loading ? (
                                         Array.from({ length: 5 }).map((_, i) => (
@@ -359,18 +412,18 @@ const StudentDashboard = () => {
                                                         remark = customRemark;
                                                         color = '#4f46e5'; bg = '#eef2ff'; // Indigo for HOD custom remarks
                                                     } else if (isLow && lowSubjectCount >= 3) {
-                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: Low Marks & Att - Come meet HOD` : isLowMarks ? `${latestCie.label}: Low Marks - Come meet HOD` : `${latestCie.label}: Low Att - Come meet HOD`;
+                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: ${t('lowMarksAndAtt')} - ${t('meetHod')}` : isLowMarks ? `${latestCie.label}: ${t('lowMarks')} - ${t('meetHod')}` : `${latestCie.label}: ${t('lowAtt')} - ${t('meetHod')}`;
                                                         color = '#dc2626'; bg = '#fef2f2';
                                                     } else if (isLow && lowSubjectCount >= 2) {
-                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: Low Marks & Att - Contact Mentor` : isLowMarks ? `${latestCie.label}: Low Marks - Contact Mentor` : `${latestCie.label}: Low Att - Contact Mentor`;
+                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: ${t('lowMarksAndAtt')} - ${t('contactMentor')}` : isLowMarks ? `${latestCie.label}: ${t('lowMarks')} - ${t('contactMentor')}` : `${latestCie.label}: ${t('lowAtt')} - ${t('contactMentor')}`;
                                                         color = '#ea580c'; bg = '#fff7ed';
                                                     } else if (isLow) {
-                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: Low Marks & Att` : isLowMarks ? `${latestCie.label}: Low Marks` : `${latestCie.label}: Low Att`;
+                                                        remark = isLowMarks && isLowAtt ? `${latestCie.label}: ${t('lowMarksAndAtt')}` : isLowMarks ? `${latestCie.label}: ${t('lowMarks')}` : `${latestCie.label}: ${t('lowAtt')}`;
                                                         color = '#ea580c'; bg = '#fff7ed';
                                                     } else if (score >= eThreshold && (att == null || att >= aThreshold)) {
-                                                        remark = 'Excellent'; color = '#15803d'; bg = '#f0fdf4';
+                                                        remark = t('excellent'); color = '#15803d'; bg = '#f0fdf4';
                                                     } else {
-                                                        remark = 'Good'; color = '#2563eb'; bg = '#eff6ff';
+                                                        remark = t('good'); color = '#2563eb'; bg = '#eff6ff';
                                                     }
                                                     return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: bg }}>
                                                         <div style={{ fontSize: '0.72rem', fontWeight: 600, color, whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4' }}>{remark}</div>
@@ -378,12 +431,12 @@ const StudentDashboard = () => {
                                                 })()}
                                             </tr>
                                         );
-                                    }) : <tr><td colSpan="5" style={{ textAlign: 'center', padding: '1rem' }}>Loading data...</td></tr>}
+                                    }) : <tr><td colSpan="5" style={{ textAlign: 'center', padding: '1rem' }}>{t('loading')}</td></tr>}
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                    <AcademicInsights realMarks={realMarks} loading={loading} />
+                    <AcademicInsights realMarks={realMarks} loading={loading} t={t} />
                 </div>
 
                 {/* Conditional Remarks Section */}
@@ -406,12 +459,12 @@ const StudentDashboard = () => {
                     let messageBorder = '#bbf7d0';
 
                     if (lowSubjectsCount >= 3) {
-                        overallMessage = `⚠️ You have low marks or attendance in ${lowSubjectsCount} subjects (${lowSubjectNames.join(', ')}). Please come meet the HOD immediately.`;
+                        overallMessage = `⚠️ ${t('lowMarksOrAttIn')} ${lowSubjectsCount} ${t('subjectsPlural')} (${lowSubjectNames.join(', ')}). ${t('meetHodImmediate')}`;
                         messageColor = '#dc2626';
                         messageBg = '#fef2f2';
                         messageBorder = '#fecaca';
                     } else if (lowSubjectsCount >= 2) {
-                        overallMessage = `📋 You have low marks or attendance in ${lowSubjectsCount} subjects (${lowSubjectNames.join(', ')}). Please contact your mentor for guidance.`;
+                        overallMessage = `📋 ${t('lowMarksOrAttIn')} ${lowSubjectsCount} ${t('subjectsPlural')} (${lowSubjectNames.join(', ')}). ${t('contactMentorGuidance')}`;
                         messageColor = '#ea580c';
                         messageBg = '#fff7ed';
                         messageBorder = '#fed7aa';
@@ -424,7 +477,7 @@ const StudentDashboard = () => {
                                     <div style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
                                         <AlertCircle size={24} style={{ color: messageColor, flexShrink: 0, marginTop: '2px' }} />
                                         <div>
-                                            <span style={{ fontSize: '0.8rem', color: messageColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Overall Remarks</span>
+                                            <span style={{ fontSize: '0.8rem', color: messageColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{t('remarks')}</span>
                                             <p style={{ margin: '4px 0 0 0', color: messageColor, fontWeight: 600, fontSize: '0.95rem' }}>{overallMessage}</p>
                                         </div>
                                     </div>
@@ -435,7 +488,7 @@ const StudentDashboard = () => {
                                     <div style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '12px' }}>
                                         <FileText size={20} style={{ color: '#4f46e5', flexShrink: 0 }} />
                                         <div>
-                                            <span style={{ fontSize: '0.8rem', color: '#6366f1', fontWeight: 600, textTransform: 'uppercase' }}>HOD Remarks</span>
+                                            <span style={{ fontSize: '0.8rem', color: '#6366f1', fontWeight: 600, textTransform: 'uppercase' }}>HOD {t('remarks')}</span>
                                             <p style={{ margin: '4px 0 0 0', color: '#3730a3', fontWeight: 500 }}>{studentInfo.overallRemarks}</p>
                                         </div>
                                     </div>
@@ -456,7 +509,7 @@ const StudentDashboard = () => {
         // Add Header
         doc.setFontSize(18);
         doc.setTextColor(30, 58, 138); // Academic Blue
-        doc.text('CIE MARKS REPORT', 105, 15, { align: 'center' });
+        doc.text(t('cieMarks').toUpperCase() + ' REPORT', 105, 15, { align: 'center' });
 
         doc.setFontSize(14);
         doc.setTextColor(30, 41, 59);
@@ -468,7 +521,7 @@ const StudentDashboard = () => {
         doc.text(`Student Name: ${studentInfo.name}`, 14, 35);
         doc.text(`Registration No: ${studentInfo.rollNo}`, 14, 40);
         doc.text(`Department: ${studentInfo.branch}`, 14, 45);
-        doc.text(`Semester: ${selectedSemester}`, 14, 50);
+        doc.text(`${t('semester')}: ${selectedSemester}`, 14, 50);
         doc.text(`Internals: ${filter}`, 14, 55);
         doc.text(`Date of Generation: ${new Date().toLocaleDateString()}`, 14, 60);
 
@@ -578,10 +631,10 @@ const StudentDashboard = () => {
                 <div className={styles.card} style={{ marginBottom: '1.5rem', animationDelay: '0.1s' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
                         <div className={styles.selectionRow} style={{ flex: 1 }}>
-                            <div className={styles.selectionGroup}><label className={styles.selectionLabel}>Select Semester:</label><select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className={styles.filterSelect}>{[1, 2, 3, 4, 5, 6].map(sem => <option key={sem} value={sem}>Semester {sem}</option>)}</select></div>
-                            <div className={styles.selectionGroup}><label className={styles.selectionLabel}>Select Internals:</label>
+                            <div className={styles.selectionGroup}><label className={styles.selectionLabel}>{t('selectSem')}:</label><select value={selectedSemester} onChange={(e) => setSelectedSemester(e.target.value)} className={styles.filterSelect}>{[1, 2, 3, 4, 5, 6].map(sem => <option key={sem} value={sem}>{t('semester')} {sem}</option>)}</select></div>
+                            <div className={styles.selectionGroup}><label className={styles.selectionLabel}>{t('selectInternals')}:</label>
                                 <select value={selectedCIE} onChange={(e) => setSelectedCIE(e.target.value)} className={styles.filterSelect}>
-                                    <option value="All">All Internals</option>
+                                    <option value="All">{t('allInternals')}</option>
                                     <option value="CIE-1">CIE-1</option>
                                     <option value="CIE-2">CIE-2</option>
                                     <option value="CIE-3">CIE-3 Skill Test 1</option>
@@ -590,39 +643,39 @@ const StudentDashboard = () => {
                                 </select>
                             </div>
                         </div>
-                        <button onClick={() => downloadCIEMarks(theorySubjects, selectedCIE)} className={styles.actionBtn} style={{ padding: '0.5rem 1rem' }}><FileText size={16} /> Download PDF</button>
+                        <button onClick={() => downloadCIEMarks(theorySubjects, selectedCIE)} className={styles.actionBtn} style={{ padding: '0.5rem 1rem' }}><FileText size={16} /> {t('downloadPdf')}</button>
                     </div>
                 </div>
 
                 {!hasDataForSelectedCIE && selectedCIE !== 'All' ? (
                     <div className={styles.card} style={{ animationDelay: '0.2s', textAlign: 'center', padding: '3rem' }}>
                         <div style={{ background: '#fef2f2', width: '64px', height: '64px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', color: '#ef4444' }}><AlertCircle size={32} /></div>
-                        <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1f2937', marginBottom: '0.5rem' }}>No Marks Uploaded Yet</h3>
+                        <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#1f2937', marginBottom: '0.5rem' }}>{t('noMarksUploaded')}</h3>
                         <p style={{ color: '#6b7280', maxWidth: '400px', margin: '0 auto' }}>
-                            The faculty has not uploaded marks for <span style={{ fontWeight: '600', color: '#374151' }}>{selectedCIE}</span>. Please check back later.
+                            {t('facultyNotUploaded')}
                         </p>
                     </div>
                 ) : (
                     <div className={styles.card} style={{ animationDelay: '0.2s' }}>
-                        <div className={styles.cardHeader}><h2 className={styles.cardTitle}>📘 Subjects</h2></div>
+                        <div className={styles.cardHeader}><h2 className={styles.cardTitle}>📘 {t('subjects')}</h2></div>
                         <div className={styles.tableContainer}>
                             <table className={styles.table}>
                                 <thead>
                                     <tr>
-                                        <th>Subject</th>
+                                        <th>{t('subjects')}</th>
                                         {selectedCIE === 'All' ? (
                                             <>
-                                                <th>CIE-1</th><th>Att</th>
-                                                <th>CIE-2</th><th>Att</th>
-                                                <th>CIE-3</th><th>Att</th>
-                                                <th>CIE-4</th><th>Att</th>
-                                                <th>CIE-5</th><th>Att</th>
+                                                <th>CIE-1</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>CIE-2</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>CIE-3</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>CIE-4</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>CIE-5</th><th>{t('attendance').substring(0, 3)}</th>
                                             </>
                                         ) : (
-                                            <><th>Marks ({selectedCIE})</th><th>Attendance</th></>
+                                            <><th>{t('marks')} ({selectedCIE})</th><th>{t('attendance')}</th></>
                                         )}
-                                        <th>Total (250)</th>
-                                        <th style={{ background: '#fefce8', color: '#a16207' }}>Remarks</th>
+                                        <th>{t('totalProgress')} (250)</th>
+                                        <th style={{ background: '#fefce8', color: '#a16207' }}>{t('remarks')}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -635,10 +688,10 @@ const StudentDashboard = () => {
                                             const isExcellent = v >= eThr && a >= aThr;
                                             
                                             let text = '';
-                                            if (isLowMarks && isLowAtt) { text = `Low Marks & Att`; }
-                                            else if (isLowMarks) { text = `Low Marks`; }
-                                            else if (isLowAtt) { text = `Low Att`; }
-                                            else if (isExcellent) { text = `${label}: Excellent`; }
+                                            if (isLowMarks && isLowAtt) { text = t('lowMarksAndAtt'); }
+                                            else if (isLowMarks) { text = t('lowMarks'); }
+                                            else if (isLowAtt) { text = t('lowAtt'); }
+                                            else if (isExcellent) { text = `${label}: ${t('excellent')}`; }
                                             else { text = `${label}: Good`; }
 
                                             return {
@@ -751,10 +804,10 @@ const StudentDashboard = () => {
     const renderSubjects = () => (
         <div className={styles.detailsContainer}>
             <div className={styles.card} style={{ animationDelay: '0.1s' }}>
-                <div className={styles.cardHeader}><h2 className={styles.cardTitle}>📚 Registered Subjects</h2></div>
+                <div className={styles.cardHeader}><h2 className={styles.cardTitle}>📚 {t('subjects')}</h2></div>
                 <div className={styles.tableContainer}>
                     <table className={styles.table}>
-                        <thead><tr><th>Code</th><th>Subject Name</th><th>Department</th><th>Semester</th></tr></thead>
+                        <thead><tr><th>{t('subjectCode')}</th><th>{t('subjectName')}</th><th>{t('branch')}</th><th>{t('semester')}</th></tr></thead>
                         <tbody>
                             {loading ? (
                                 Array.from({ length: 6 }).map((_, i) => (
@@ -771,7 +824,7 @@ const StudentDashboard = () => {
                                     <td><span style={{ fontWeight: 600 }}>{sub.name}</span></td>
                                     <td>{sub.department}</td><td>{sub.semester}</td>
                                 </tr>
-                            )) : <tr><td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>No subjects found.</td></tr>}
+                            )) : <tr><td colSpan="4" style={{ textAlign: 'center', padding: '2rem' }}>{t('noSubjects')}.</td></tr>}
                         </tbody>
                     </table>
                 </div>
@@ -796,11 +849,11 @@ const StudentDashboard = () => {
                 ) : facultyList.length > 0 ? facultyList.map((fac, idx) => (
                     <div key={idx} className={styles.facultyCard} style={{ animation: `fadeIn 0.5s ease-out ${idx * 0.1}s backwards` }}>
                         <div style={{ width: '64px', height: '64px', background: '#eff6ff', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', color: '#3b82f6', border: '1px solid #bfdbfe' }}><User size={32} /></div>
-                        <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem', fontWeight: '700' }}>{fac.name}</h3>
-                        <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', opacity: 0.8 }}>{fac.department} Department</p>
+                        <h3 style={{ margin: '0 0 0.25rem 0', fontSize: '1.1rem', fontWeight: '700' }}>{transliterateName(fac.name, lang)}</h3>
+                        <p style={{ fontSize: '0.9rem', marginBottom: '0.5rem', opacity: 0.8 }}>{fac.department} {t('branch')}</p>
                         <div style={{ width: '100%', height: '1px', background: 'var(--border-color)', margin: '0.75rem 0' }}></div>
-                        <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem', opacity: 0.9 }}><span style={{ fontWeight: 600 }}>Teaches:</span> {fac.subjects}</p>
-                        {fac.email && <a href={`mailto:${fac.email}`} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#2563eb', fontSize: '0.85rem', textDecoration: 'none', marginTop: 'auto', fontWeight: '500' }}><Mail size={14} /> Contact</a>}
+                        <p style={{ fontSize: '0.85rem', marginBottom: '0.5rem', opacity: 0.9 }}><span style={{ fontWeight: 600 }}>{t('teaches')}:</span> {fac.subjects}</p>
+                        {fac.email && <a href={`mailto:${fac.email}`} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#2563eb', fontSize: '0.85rem', textDecoration: 'none', marginTop: 'auto', fontWeight: '500' }}><Mail size={14} /> {t('contact')}</a>}
                     </div>
                 )) : <div style={{ textAlign: 'center', padding: '3rem', width: '100%', gridColumn: '1/-1' }}><p>No faculty details available.</p></div>}
             </div>
@@ -812,8 +865,8 @@ const StudentDashboard = () => {
         return (
             <div className={styles.detailsContainer}>
                 <div className={styles.card} style={{ animationDelay: '0.1s' }}>
-                    <h2 className={styles.cardTitle}>📖 Syllabus Notifications</h2>
-                    {updates.length === 0 ? <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No syllabus updates.</p> :
+                    <h2 className={styles.cardTitle}>📖 {t('syllabusNotif')}</h2>
+                    {updates.length === 0 ? <p style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>{t('noSyllabusUpdates')}.</p> :
                         <div className={styles.notificationsList}>
                             {updates.map((item, idx) => (
                                 <div key={idx} className={styles.notifItem} style={{ borderLeft: '4px solid #3b82f6', background: '#eff6ff', padding: '1rem', marginBottom: '1rem', borderRadius: '8px', animation: `slideUp 0.4s ease-out ${idx * 0.1}s backwards` }}>
@@ -836,21 +889,21 @@ const StudentDashboard = () => {
         <div className={styles.detailsContainer}>
             {/* Upcoming Exams Section in Notifications Tab */}
             <div className={styles.card} style={{ animationDelay: '0.05s', marginBottom: '1.5rem' }}>
-                <h2 className={styles.cardTitle}>📅 Upcoming Exams</h2>
+                <h2 className={styles.cardTitle}>📅 {t('upcomingExams')}</h2>
                 <div className={styles.examsList}>
-                    {loadingAnnouncements ? <p>Loading schedule...</p> : upcomingExams.length > 0 ? upcomingExams.map((exam, idx) => (
+                    {loadingAnnouncements ? <p>{t('loadingSchedule')}</p> : upcomingExams.length > 0 ? upcomingExams.map((exam, idx) => (
                         <div key={exam.id} className={styles.examItem} style={{ animationDelay: `${0.1 * idx}s` }}>
                             <div className={styles.examBadge}>{exam.exam}</div>
                             <div className={styles.examInfo}><span className={styles.examSubject}>{exam.subject}</span><span className={styles.examDate}><Calendar size={12} /> {exam.date} • {exam.time} • Room: {exam.room}</span></div>
                             <Clock size={16} className={styles.examIcon} />
                         </div>
-                    )) : <p style={{ color: '#6b7280', padding: '1rem' }}>No upcoming exams scheduled.</p>}
+                    )) : <p style={{ color: '#6b7280', padding: '1rem' }}>{t('noExams')}.</p>}
                 </div>
             </div>
 
             {/* General Notifications Section */}
             <div className={styles.card} style={{ animationDelay: '0.1s' }}>
-                <h2 className={styles.cardTitle}>🔔 General Notifications</h2>
+                <h2 className={styles.cardTitle}>🔔 {t('generalNotif')}</h2>
                 <div className={styles.notificationsList} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
                     {notifications.length > 0 ? notifications.map((notif, idx) => (
                         <div key={notif.id} className={styles.notifItem} style={{
@@ -871,7 +924,7 @@ const StudentDashboard = () => {
                             </div>
                         </div>
                     )) : (
-                        <p style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>No new notifications.</p>
+                        <p style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>{t('noNotif')}.</p>
                     )}
                 </div>
             </div>
@@ -887,27 +940,42 @@ const StudentDashboard = () => {
                             {loading ? (
                                 <Skeleton width="300px" height="40px" />
                             ) : activeSection === 'Overview' ? (
-                                <span className={styles.typewriter}>{typedText}</span>
-                            ) : activeSection}
+                                <span key={lang} className={styles.typewriter}>{typedText}</span>
+                            ) : (
+                                (activeSection === 'CIE Marks' ? t('cieMarks') : (t(activeSection.toLowerCase().replace(' ', '')) || activeSection)).toUpperCase()
+                            )}
                         </h1>
                         <p className={styles.subtitle}>
                             {loading ? (
                                 <Skeleton width="250px" height="20px" style={{ marginTop: '8px' }} />
                             ) : (
-                                <>{studentInfo.branch} | Semester: {studentInfo.semester} | Reg No: {studentInfo.rollNo}</>
+                                <>{studentInfo.branch} | {t('semester')}: {studentInfo.semester} | {t('regNo')}: {studentInfo.rollNo} | {t('name')}: {lang === 'KN' ? (studentInfo.nameKn || transliterateName(studentInfo.name, lang)) : studentInfo.name}</>
                             )}
                         </p>
+                    </div>
+                    <div className={styles.headerRight}>
+                        <button 
+                            className={styles.langToggle} 
+                            onClick={toggleLang}
+                            title={lang === 'EN' ? 'Change to Kannada' : 'Change to English'}
+                        >
+                            {lang === 'EN' ? 'ಕನ್ನಡ' : 'EN'}
+                        </button>
                     </div>
                 </header>
 
                 {activeSection === 'Overview' && (
                     <AcademicSummary
-                        studentInfo={studentInfo}
+                        studentInfo={{
+                            ...studentInfo,
+                            mentor: lang === 'KN' ? (studentInfo.mentorKn || transliterateName(studentInfo.mentor, lang)) : studentInfo.mentor
+                        }}
                         cieStatus={cieStatus}
                         loading={loading}
+                        t={t}
                         // Risk Logic: High if Aggregate < 40 OR Attendance < 75. Moderate if Aggregate < 60. Else Low.
                         riskLevel={
-                            (parseFloat(studentInfo.cgpa) < 40) ? 'High' :
+                            (parseFloat(studentInfo.cgpa) < 40 || (studentInfo.avgAttendance && studentInfo.avgAttendance < 75)) ? 'High' :
                                 parseFloat(studentInfo.cgpa) < 60 ? 'Moderate' : 'Low'
                         }
                     />

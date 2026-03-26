@@ -3,12 +3,13 @@ import DashboardLayout from '../components/DashboardLayout';
 import API_BASE_URL from '../config/api';
 import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../components/GlobalDialogProvider';
-import { LayoutDashboard, Users, FilePlus, Save, AlertCircle, Phone, FileText, CheckCircle, Search, Filter, Mail, X, Download, Clock, BarChart2, TrendingUp, TrendingDown, Award, ClipboardList, AlertTriangle, Edit3, Edit, Calendar, UserCheck, BookOpen, Upload, Megaphone, Lock, Bell, MapPin, Trash2, Building2, Send, RefreshCw, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Users, FilePlus, Save, AlertCircle, Phone, FileText, CheckCircle, Search, Filter, Mail, X, Download, Clock, BarChart2, TrendingUp, TrendingDown, Award, ClipboardList, AlertTriangle, Edit3, Edit, Calendar, UserCheck, BookOpen, Upload, Megaphone, Lock, Bell, MapPin, Trash2, Building2, Send, RefreshCw, MessageSquare, User } from 'lucide-react';
 import { facultyData, facultyProfiles, facultySubjects, studentsList, labSchedule, getMenteesForFaculty } from '../utils/mockData';
 import styles from './FacultyDashboard.module.css';
 import authenticatedFetch from '../utils/authFetch';
 import Skeleton from '../components/ui/Skeleton';
 import { StudentProfileModal } from '../components/dashboard/principal/DirectorySection';
+import ProfileModal from '../components/ProfileModal';
 
 
 
@@ -496,9 +497,12 @@ const FacultyDashboard = () => {
         if (!user || !user.token) return;
         try {
             const anRes = await authenticatedFetch(`${API_BASE_URL}/faculty/analytics`);
-            if (anRes.ok) {
+            if (anRes && anRes.ok) {
                 const data = await anRes.json();
                 setFacultyClassAnalytics(data);
+            } else if (anRes && anRes.status === 401) {
+                console.warn("Analytics endpoint returned 401, using fallback data.");
+                // Fallback handled by initial state
             }
         } catch (e) {
             console.error("Failed to fetch analytics", e);
@@ -1060,7 +1064,16 @@ const FacultyDashboard = () => {
             onClick: () => { setActiveSection('Dept Assignment'); setSelectedSubject(null); }
         },
         {
+            label: 'My Profile',
+            category: 'Account',
+            path: '/dashboard/faculty',
+            icon: <User size={20} />,
+            isActive: activeSection === 'My Profile',
+            onClick: () => { setActiveSection('My Profile'); setSelectedSubject(null); }
+        },
+        {
             label: 'Notifications',
+            category: 'Account',
             path: '/dashboard/faculty',
             icon: <Bell size={20} />,
             isActive: activeSection === 'Notifications',
@@ -3642,7 +3655,7 @@ const FacultyDashboard = () => {
                 borderColor: '#bcf0da',
                 icon: <Award size={20} />,
                 list: facultyClassAnalytics.excellentPerformersList || [],
-                description: 'Students who scored more than 40/50 marks.'
+                description: 'Students who achieved Excellent marks in this subject.'
             },
             {
                 id: 'average',
@@ -3652,7 +3665,7 @@ const FacultyDashboard = () => {
                 borderColor: '#fde68a',
                 icon: <ClipboardList size={20} />,
                 list: facultyClassAnalytics.averagePerformersList || [],
-                description: 'Students who scored between 20 and 40 marks.'
+                description: 'Students who scored between the passing threshold and Excellent marks.'
             },
             {
                 id: 'low',
@@ -3662,7 +3675,7 @@ const FacultyDashboard = () => {
                 borderColor: '#fecaca',
                 icon: <AlertTriangle size={20} />,
                 list: facultyClassAnalytics.lowPerformersList || [],
-                description: 'Students who scored 20 or fewer marks.'
+                description: 'Students who scored below the passing threshold (At Risk).'
             }
         ];
 
@@ -4506,6 +4519,7 @@ const FacultyDashboard = () => {
             {activeSection === 'Student Performance' && renderPerformanceSection()}
             {activeSection === 'Notifications' && renderNotifications()}
             {activeSection === 'Dept Assignment' && renderDeptAssignment()}
+            {activeSection === 'My Profile' && <ProfileModal inline={true} />}
 
             {/* MODALS */}
             {renderStudentProfileModal()}

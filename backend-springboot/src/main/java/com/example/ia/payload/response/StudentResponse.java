@@ -7,6 +7,7 @@ public class StudentResponse {
     private Long id;
     private String regNo;
     private String name;
+    private String nameKn;
     private String department;
     private Integer semester;
     private String section;
@@ -14,20 +15,23 @@ public class StudentResponse {
     private String phone;
     private String parentPhone;
     private Map<String, Double> marks;
-    private Map<String, Map<String, Double>> subjectMarks;
+    private Map<String, Map<String, Object>> subjectMarks;
     private Boolean isCie1Complete;
     private Double overallCie1Percentage;
     private String overallRemarks;
     private String mentor;
+    private String mentorKn;
+
 
     // Mocked fields for UI
     private String feesStatus = "Paid";
     private String mentoringStatus = "Done";
 
     public StudentResponse(Student student, Map<String, Double> marks,
-            Map<String, Map<String, Double>> subjectMarks,
+            Map<String, Map<String, Object>> subjectMarks,
             Boolean isCie1Complete,
-            Double overallCie1Percentage) {
+            Double overallCie1Percentage,
+            String mentorKn) {
         this.id = student.getId();
         this.regNo = student.getRegNo();
         this.name = student.getName();
@@ -43,6 +47,8 @@ public class StudentResponse {
         this.overallCie1Percentage = overallCie1Percentage;
         this.overallRemarks = student.getOverallRemarks();
         this.mentor = student.getMentor();
+        this.mentorKn = mentorKn;
+        this.nameKn = student.getNameKn();
     }
 
     // Getters and Setters
@@ -56,6 +62,10 @@ public class StudentResponse {
 
     public String getName() {
         return name;
+    }
+
+    public String getNameKn() {
+        return nameKn;
     }
 
     public String getDepartment() {
@@ -98,7 +108,7 @@ public class StudentResponse {
         return mentoringStatus;
     }
 
-    public Map<String, Map<String, Double>> getSubjectMarks() {
+    public Map<String, Map<String, Object>> getSubjectMarks() {
         return subjectMarks;
     }
 
@@ -116,6 +126,10 @@ public class StudentResponse {
 
     public String getMentor() {
         return mentor;
+    }
+
+    public String getMentorKn() {
+        return mentorKn;
     }
 
     public void setOverallRemarks(String overallRemarks) {

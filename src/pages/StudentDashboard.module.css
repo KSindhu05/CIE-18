@@ -99,6 +99,55 @@
     letter-spacing: 0.01em;
 }
 
+.headerRight {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.langToggle {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    border: 2px solid #e2e8f0;
+    background: white;
+    color: var(--accent-indigo);
+    font-weight: 800;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    position: relative;
+    overflow: hidden;
+    z-index: 10;
+}
+
+.langToggle:hover {
+    border-color: var(--accent-indigo);
+    background: var(--accent-indigo);
+    color: white;
+    transform: scale(1.1) rotate(15deg);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.2);
+}
+
+.langToggle::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: 0.5s;
+}
+
+.langToggle:hover::before {
+    left: 100%;
+}
+
 /* ─── Action Button ────────────────────────────────────────────────────── */
 
 .actionBtn {
@@ -274,7 +323,8 @@
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    letter-spacing: -0.01em;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
 }
 
 /* ─── Chart Card ──────────────────────────────────────────────────────── */
@@ -366,6 +416,8 @@
     font-size: 0.92rem;
     font-weight: 600;
     color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
 }
 
 .insightContent p {
