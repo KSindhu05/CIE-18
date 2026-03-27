@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useDialog } from '../components/GlobalDialogProvider';
 import API_BASE_URL from '../config/api';
 import authenticatedFetch from '../utils/authFetch';
+import ProfileModal from '../components/ProfileModal';
 import styles from './PrincipalDashboard.module.css';
 import {
     LayoutDashboard, Users, ShieldCheck, Calendar, BarChart2,
@@ -57,6 +58,7 @@ const PrincipalDashboard = () => {
     const [targetSemester, setTargetSemester] = useState('');
     const [shiftFrom, setShiftFrom] = useState('');
     const [shiftTo, setShiftTo] = useState('');
+    const [deleteGraduating, setDeleteGraduating] = useState(false);
     const [resetLoading, setResetLoading] = useState(false);
 
     // Directory State
@@ -172,12 +174,12 @@ const PrincipalDashboard = () => {
         { label: 'CIE Compliance', path: '#compliance', icon: <ShieldCheck size={20} />, isActive: activeTab === 'compliance', onClick: () => setActiveTab('compliance') },
         { label: 'Reports & Analytics', path: '#reports', icon: <FileText size={20} />, isActive: activeTab === 'reports', onClick: () => setActiveTab('reports') },
         { label: 'My Profile', category: 'Account', path: '#profile', icon: <User size={20} />, isActive: activeTab === 'profile', onClick: () => setActiveTab('profile') },
-        { 
-            label: 'Notifications', 
+        {
+            label: 'Notifications',
             category: 'Account',
-            path: '#notifications', 
-            icon: <Bell size={20} />, 
-            isActive: activeTab === 'notifications', 
+            path: '#notifications',
+            icon: <Bell size={20} />,
+            isActive: activeTab === 'notifications',
             onClick: async () => {
                 setActiveTab('notifications');
                 // Mark all local notifications as read to clear badge immediately
@@ -189,8 +191,8 @@ const PrincipalDashboard = () => {
                 } catch (error) {
                     console.error('Failed to mark notifications as read:', error);
                 }
-            }, 
-            badge: notifications.filter(n => !n.isRead).length || null 
+            },
+            badge: notifications.filter(n => !n.isRead).length || null
         },
         { label: 'Semester Reset', path: '#semester', icon: <Settings size={20} />, isActive: activeTab === 'semester-management', onClick: () => setActiveTab('semester-management') }
     ];
@@ -494,33 +496,34 @@ const PrincipalDashboard = () => {
                                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '1rem' }}>
                                     <select
                                         value={targetSemester}
-                                        onChange={(e) => setTargetSemester(e.target.value)}
-                                        style={{
-                                            padding: '0.4rem 0.8rem', borderRadius: '8px', border: '1px solid #fca5a5',
-                                            background: '#fff', color: '#1e293b', fontWeight: 600, fontSize: '0.85rem',
-                                            cursor: 'pointer', outline: 'none'
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setTargetSemester(val);
+                                            // Auto-populate shift From/To if numeric semester is picked
+                                            if (val && val !== 'All') {
+                                                const currentSem = parseInt(val);
+                                                setShiftFrom(currentSem.toString());
+                                                if (currentSem < 6) {
+                                                    setShiftTo((currentSem + 1).toString());
+                                                    setDeleteGraduating(false);
+                                                } else {
+                                                    setShiftTo('End');
+                                                    setDeleteGraduating(true);
+                                                }
+                                            } else {
+                                                setShiftFrom('');
+                                                setShiftTo('');
+                                                setDeleteGraduating(false);
+                                            }
                                         }}
+                                        className={styles.semesterDropdown}
                                     >
                                         <option value="" disabled>Select Target Semester</option>
-                                        <option value="All">Target: All Semesters</option>
+                                        <option value="All">Institution Wide (All Semesters)</option>
                                         {[1, 2, 3, 4, 5, 6].map(sem => (
-                                            <option key={sem} value={sem}>Target: Semester {sem}</option>
+                                            <option key={sem} value={sem}>Semester {sem} Only</option>
                                         ))}
                                     </select>
-                                    <span style={{
-                                        background: semesterStatus === 'ACTIVE'
-                                            ? 'linear-gradient(135deg, #065f46, #059669)'
-                                            : 'linear-gradient(135deg, #7c2d12, #ea580c)',
-                                        color: 'white', padding: '0.4rem 1.2rem',
-                                        borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700,
-                                        letterSpacing: '1px', textTransform: 'uppercase',
-                                        boxShadow: semesterStatus === 'ACTIVE'
-                                            ? '0 0 15px rgba(5,150,105,0.5)'
-                                            : '0 0 15px rgba(234,88,12,0.5)',
-                                        display: 'inline-block'
-                                    }}>
-                                        ● {semesterStatus}
-                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -528,67 +531,6 @@ const PrincipalDashboard = () => {
                         {/* Action Cards Grid */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
 
-                            {/* Card 1: Semester Status */}
-                            <div style={{
-                                background: '#ffffff',
-                                borderRadius: '16px', padding: '1.75rem',
-                                border: '1px solid #e2e8f0',
-                                boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
-                                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
-                                animation: 'fadeIn 0.5s ease 0.1s both',
-                                cursor: 'default'
-                            }}
-                                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 32px rgba(0,0,0,0.1)'; }}
-                                onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.06)'; }}
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-                                    <div style={{
-                                        background: '#eff6ff',
-                                        borderRadius: '12px', padding: '0.75rem',
-                                        boxShadow: '0 2px 8px rgba(99,102,241,0.1)'
-                                    }}>
-                                        <GraduationCap size={22} color="#4f46e5" />
-                                    </div>
-                                    <div style={{
-                                        fontSize: '0.7rem', fontWeight: 700, letterSpacing: '1px',
-                                        color: '#64748b', padding: '0.25rem 0.6rem',
-                                        border: '1px solid #e2e8f0', borderRadius: '6px'
-                                    }}>CONTROL</div>
-                                </div>
-                                <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem', fontWeight: 700, color: '#1e293b' }}>Semester Status</h3>
-                                <p style={{ fontSize: '0.82rem', color: '#64748b', marginBottom: '1.5rem', lineHeight: 1.6 }}>
-                                    Toggle between <strong style={{ color: '#4f46e5' }}>ACTIVE</strong> and <strong style={{ color: '#f97316' }}>COMPLETED</strong> to control what students can see.
-                                </p>
-                                <button
-                                    onClick={async () => {
-                                        const newStatus = semesterStatus === 'ACTIVE' ? 'COMPLETED' : 'ACTIVE';
-                                        try {
-                                            await updateSemesterStatus(newStatus);
-                                            setSemesterStatus(newStatus);
-                                            showToast(`Semester marked as ${newStatus}`, 'success');
-                                        } catch (e) { showToast('Failed to update status', 'error'); }
-                                    }}
-                                    style={{
-                                        width: '100%', padding: '0.75rem', border: '1px solid #e2e8f0', borderRadius: '10px',
-                                        background: '#ffffff',
-                                        color: '#1e293b', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', letterSpacing: '0.5px'
-                                    }}
-                                    onMouseEnter={e => {
-                                        e.currentTarget.style.transform = 'translateY(-2px) scale(1.01)';
-                                        e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.08)';
-                                        e.currentTarget.style.borderColor = '#cbd5e1';
-                                    }}
-                                    onMouseLeave={e => {
-                                        e.currentTarget.style.transform = 'translateY(0) scale(1)';
-                                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-                                        e.currentTarget.style.borderColor = '#e2e8f0';
-                                    }}
-                                >
-                                    Mark as {semesterStatus === 'ACTIVE' ? 'COMPLETED' : 'ACTIVE'}
-                                </button>
-                            </div>
 
                             {/* Card 2: Clear Marks */}
                             <div style={{
@@ -688,13 +630,26 @@ const PrincipalDashboard = () => {
                                     }}>PROGRESSION</div>
                                 </div>
                                 <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.15rem', fontWeight: 700, color: '#1e293b' }}>Shift to Next Semester</h3>
-                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1.5rem' }}>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1.5rem', opacity: !targetSemester ? 0.5 : 1 }}>
                                     <select
                                         value={shiftFrom}
-                                        onChange={(e) => setShiftFrom(e.target.value)}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setShiftFrom(val);
+                                            if (val === '6') {
+                                                setShiftTo('End');
+                                                setDeleteGraduating(true);
+                                            } else if (val) {
+                                                const next = parseInt(val) + 1;
+                                                if (next <= 6) setShiftTo(next.toString());
+                                                setDeleteGraduating(false);
+                                            }
+                                        }}
+                                        disabled={!targetSemester}
                                         style={{
                                             flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #bbf7d0',
-                                            background: '#f0fdf4', color: '#16a34a', fontWeight: 600, fontSize: '0.8rem', outline: 'none'
+                                            background: '#f0fdf4', color: '#16a34a', fontWeight: 600, fontSize: '0.8rem', outline: 'none',
+                                            cursor: !targetSemester ? 'not-allowed' : 'pointer'
                                         }}
                                     >
                                         <option value="" disabled>From</option>
@@ -705,18 +660,73 @@ const PrincipalDashboard = () => {
                                     <span style={{ color: '#16a34a', fontWeight: 900 }}>→</span>
                                     <select
                                         value={shiftTo}
-                                        onChange={(e) => setShiftTo(e.target.value)}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setShiftTo(val);
+                                            if (val === 'End') setDeleteGraduating(true);
+                                        }}
+                                        disabled={!targetSemester}
                                         style={{
                                             flex: 1, padding: '0.5rem', borderRadius: '8px', border: '1px solid #bbf7d0',
-                                            background: '#f0fdf4', color: '#16a34a', fontWeight: 600, fontSize: '0.8rem', outline: 'none'
+                                            background: '#f0fdf4', color: '#16a34a', fontWeight: 600, fontSize: '0.8rem', outline: 'none',
+                                            cursor: !targetSemester ? 'not-allowed' : 'pointer'
                                         }}
                                     >
                                         <option value="" disabled>To</option>
                                         {[1, 2, 3, 4, 5, 6].map(sem => (
                                             <option key={sem} value={sem}>Sem {sem}</option>
                                         ))}
+                                        <option value="End">End (Graduation)</option>
                                     </select>
                                 </div>
+
+                                {/* Graduation Cleanup Toggle */}
+                                <div style={{ 
+                                    marginBottom: '1.5rem', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    gap: '0.75rem',
+                                    padding: '0.75rem',
+                                    background: deleteGraduating ? '#fff1f2' : '#f8fafc',
+                                    borderRadius: '10px',
+                                    border: `1px solid ${deleteGraduating ? '#fecdd3' : '#e2e8f0'}`,
+                                    transition: 'all 0.3s ease',
+                                    cursor: !targetSemester ? 'not-allowed' : 'pointer',
+                                    opacity: !targetSemester ? 0.5 : 1
+                                }}
+                                onClick={() => targetSemester && setDeleteGraduating(!deleteGraduating)}
+                                >
+                                    <div style={{
+                                        width: '40px',
+                                        height: '20px',
+                                        background: deleteGraduating ? '#ef4444' : '#cbd5e1',
+                                        borderRadius: '20px',
+                                        position: 'relative',
+                                        transition: 'background 0.3s ease'
+                                    }}>
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '2px',
+                                            left: deleteGraduating ? '22px' : '2px',
+                                            width: '16px',
+                                            height: '16px',
+                                            background: '#fff',
+                                            borderRadius: '50%',
+                                            transition: 'left 0.3s ease',
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                        }} />
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: deleteGraduating ? '#991b1b' : '#334155' }}>
+                                            Delete Graduating Students
+                                        </span>
+                                        <span style={{ fontSize: '0.7rem', color: deleteGraduating ? '#b91c1c' : '#64748b' }}>
+                                            Wipe names & marks for 6th Sem students
+                                        </span>
+                                    </div>
+                                    {deleteGraduating && <Trash2 size={16} color="#ef4444" style={{ marginLeft: 'auto' }} />}
+                                </div>
+
                                 <button
                                     onClick={async () => {
                                         const confirmed = await showConfirm({
@@ -727,26 +737,27 @@ const PrincipalDashboard = () => {
                                         });
                                         if (confirmed) {
                                             setResetLoading(true);
-                                            shiftSemesters(targetSemester || 'All', shiftFrom, shiftTo)
+                                            shiftSemesters(targetSemester || 'All', shiftFrom, shiftTo === 'End' ? null : shiftTo, deleteGraduating || shiftTo === 'End')
                                                 .then((res) => {
                                                     showToast(res.message || 'Students Shifted Successfully', 'success');
                                                     setShiftFrom('');
                                                     setShiftTo('');
+                                                    setDeleteGraduating(false);
                                                 })
                                                 .catch(() => showToast('Failed to shift semesters', 'error'))
                                                 .finally(() => setResetLoading(false));
                                         }
                                     }}
-                                    disabled={resetLoading || !shiftFrom || !shiftTo}
+                                    disabled={resetLoading || !targetSemester || !shiftFrom || !shiftTo}
                                     style={{
                                         width: '100%', padding: '0.75rem', border: '1px solid #bbf7d0', borderRadius: '10px',
                                         background: shiftFrom && shiftTo ? '#f0fdf4' : '#ffffff',
-                                        color: '#16a34a', fontWeight: 600, fontSize: '0.9rem', cursor: resetLoading || !shiftFrom || !shiftTo ? 'not-allowed' : 'pointer',
+                                        color: '#16a34a', fontWeight: 600, fontSize: '0.9rem', cursor: resetLoading || !targetSemester || !shiftFrom || !shiftTo ? 'not-allowed' : 'pointer',
                                         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', opacity: resetLoading || !shiftFrom || !shiftTo ? 0.5 : 1
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)', opacity: resetLoading || !targetSemester || !shiftFrom || !shiftTo ? 0.5 : 1
                                     }}
                                     onMouseEnter={e => {
-                                        if (!resetLoading && shiftFrom && shiftTo) {
+                                        if (!resetLoading && targetSemester && shiftFrom && shiftTo) {
                                             e.currentTarget.style.transform = 'translateY(-2px) scale(1.01)';
                                             e.currentTarget.style.boxShadow = '0 10px 25px rgba(34,197,94,0.1)';
                                             e.currentTarget.style.borderColor = '#86efac';

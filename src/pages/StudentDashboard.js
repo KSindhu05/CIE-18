@@ -4,7 +4,7 @@ import autoTable from 'jspdf-autotable';
 import DashboardLayout from '../components/DashboardLayout';
 import RightSidebar from '../components/RightSidebar'; // Import RightSidebar
 import API_BASE_URL from '../config/api';
-import { LayoutDashboard, FileText, Calendar, Book, User, Download, Bell, TrendingUp, Award, Clock, CheckCircle, Mail, MapPin, ChevronDown, BookOpen, AlertCircle } from 'lucide-react';
+import { Search, Bell, User, Book, Calendar, Mail, FileText, ChevronRight, Download, Menu, X, LogOut, Moon, Sun, Clock, AlertCircle, TrendingUp, BookOpen, CheckCircle, Shield, Hash, GraduationCap, Layers, Info, Phone, LayoutDashboard, Building } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { fetchSemesterStatus } from '../services/api';
 import styles from './StudentDashboard.module.css';
@@ -59,6 +59,7 @@ const StudentDashboard = () => {
         rollNo: user?.username || '...',
         branch: '...',
         semester: '...',
+        section: '...',
         cgpa: 0,
         mentor: 'Not Assigned'
     });
@@ -113,7 +114,12 @@ const StudentDashboard = () => {
                     });
 
                     Object.values(groupedMarks).forEach(item => {
-                        item.totalScore = (item.cie1Score || 0) + (item.cie2Score || 0) + (item.cie3Score || 0) + (item.cie4Score || 0) + (item.cie5Score || 0);
+                        const s1 = item.cie1Score === -2.0 ? 0 : (item.cie1Score || 0);
+                        const s2 = item.cie2Score === -2.0 ? 0 : (item.cie2Score || 0);
+                        const s3 = item.cie3Score === -2.0 ? 0 : (item.cie3Score || 0);
+                        const s4 = item.cie4Score === -2.0 ? 0 : (item.cie4Score || 0);
+                        const s5 = item.cie5Score === -2.0 ? 0 : (item.cie5Score || 0);
+                        item.totalScore = s1 + s2 + s3 + s4 + s5;
                     });
 
                     setRealMarks(Object.values(groupedMarks));
@@ -127,6 +133,7 @@ const StudentDashboard = () => {
                             rollNo: s.regNo,
                             branch: s.department,
                             semester: s.semester,
+                            section: s.section,
                             parentPhone: s.parentPhone,
                             overallRemarks: s.overallRemarks || prev.overallRemarks,
                             mentor: s.mentor || 'Not Assigned'
@@ -146,6 +153,7 @@ const StudentDashboard = () => {
                                 rollNo: p.regNo,
                                 branch: p.department,
                                 semester: p.semester,
+                                section: p.section,
                                 parentPhone: p.parentPhone,
                                 mentor: (p.mentor && p.mentor !== 'Not Assigned') ?
                                     (lang === 'KN' ? (p.mentorKn || transliterateName(p.mentor, lang)) : p.mentor) : null,
@@ -184,7 +192,8 @@ const StudentDashboard = () => {
                 const annRes = await authenticatedFetch(`${API_BASE_URL}/cie/student/announcements`);
                 if (annRes.ok) {
                     const anns = await annRes.json();
-                    setUpcomingExams(anns.map(a => ({ id: a.id, exam: `CIE-${a.cieNumber}`, subject: a.subject?.name || 'Subject', date: a.scheduledDate, time: a.startTime ? a.startTime.substring(0, 5) : 'TBD', duration: a.durationMinutes + ' mins', room: a.examRoom || 'TBD', instructions: a.instructions, syllabus: a.syllabusCoverage })));
+                    const labelMap = { 1: 'CIE-1 (Theory)', 2: 'Skill Test 1 (Lab)', 3: 'CIE-2 (Theory)', 4: 'Skill Test 2 (Lab)', 5: 'Activity' };
+                    setUpcomingExams(anns.map(a => ({ id: a.id, exam: labelMap[a.cieNumber] || `CIE-${a.cieNumber}`, subject: a.subject?.name || 'Subject', date: a.scheduledDate, time: a.startTime ? a.startTime.substring(0, 5) : 'TBD', duration: a.durationMinutes + ' mins', room: a.examRoom || 'TBD', instructions: a.instructions, syllabus: a.syllabusCoverage })));
                 }
                 const notifRes = await authenticatedFetch(`${API_BASE_URL}/cie/student/notifications`);
                 if (notifRes.ok) {
@@ -237,10 +246,9 @@ const StudentDashboard = () => {
     const menuItems = [
         { label: t('overview'), path: '/dashboard/student', icon: <LayoutDashboard size={20} />, isActive: activeSection === 'Overview', onClick: () => setActiveSection('Overview') },
         { label: t('cieMarks'), path: '/dashboard/student', icon: <FileText size={20} />, isActive: activeSection === 'CIE Marks', onClick: () => setActiveSection('CIE Marks') },
-
         { label: t('subjects'), path: '/dashboard/student', icon: <Book size={20} />, isActive: activeSection === 'Subjects', onClick: () => setActiveSection('Subjects') },
         { label: t('faculty'), path: '/dashboard/student', icon: <User size={20} />, isActive: activeSection === 'Faculty', onClick: () => setActiveSection('Faculty') },
-        { label: t('syllabusTopics'), path: '/dashboard/student', icon: <BookOpen size={20} />, isActive: activeSection === 'Syllabus Topics', onClick: () => setActiveSection('Syllabus Topics') },
+        { label: t('syllabusNotif'), path: '/dashboard/student', icon: <BookOpen size={20} />, isActive: activeSection === 'Syllabus Topics', onClick: () => setActiveSection('Syllabus Topics') },
         {
             label: t('notifications'), path: '/dashboard/student', icon: <Bell size={20} />, isActive: activeSection === 'Notifications', onClick: async () => {
                 setActiveSection('Notifications');
@@ -253,6 +261,7 @@ const StudentDashboard = () => {
                 }
             }, badge: unreadCount || null
         },
+        { label: t('profile'), path: '/dashboard/student', icon: <User size={20} />, isActive: activeSection === 'Profile', onClick: () => setActiveSection('Profile') },
     ];
 
     const showToast = (message) => { setToast({ show: true, message }); setTimeout(() => setToast({ show: false, message: '' }), 3000); };
@@ -330,11 +339,11 @@ const StudentDashboard = () => {
     const renderOverview = () => {
         // Determine the latest CIE that has any marks across all subjects
         const cieKeys = [
-            { id: '5', key: 'cie5Score', att: 'cie5Att', remark: 'cie5Remark', label: 'CIE-5' },
-            { id: '4', key: 'cie4Score', att: 'cie4Att', remark: 'cie4Remark', label: 'CIE-4' },
-            { id: '3', key: 'cie3Score', att: 'cie3Att', remark: 'cie3Remark', label: 'CIE-3' },
-            { id: '2', key: 'cie2Score', att: 'cie2Att', remark: 'cie2Remark', label: 'CIE-2' },
-            { id: '1', key: 'cie1Score', att: 'cie1Att', remark: 'cie1Remark', label: 'CIE-1' },
+            { id: '5', key: 'cie5Score', att: 'cie5Att', remark: 'cie5Remark', label: 'Activity' },
+            { id: '4', key: 'cie4Score', att: 'cie4Att', remark: 'cie4Remark', label: 'Skill Test 2 (Lab)' },
+            { id: '3', key: 'cie3Score', att: 'cie3Att', remark: 'cie3Remark', label: 'CIE-2 (Theory)' },
+            { id: '2', key: 'cie2Score', att: 'cie2Att', remark: 'cie2Remark', label: 'Skill Test 1 (Lab)' },
+            { id: '1', key: 'cie1Score', att: 'cie1Att', remark: 'cie1Remark', label: 'CIE-1 (Theory)' },
         ];
         let latestCie = { key: 'cie1Score', att: 'cie1Att', remark: 'cie1Remark', label: 'CIE-1' }; // default
         for (const cie of cieKeys) {
@@ -388,7 +397,7 @@ const StudentDashboard = () => {
                                         return (
                                             <tr key={idx} style={{ animation: `fadeIn 0.4s ease-out ${idx * 0.1}s backwards` }}>
                                                 <td><div className={styles.subjectCell}><span style={{ fontWeight: 600 }}>{sub.name}</span><br /><span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{sub.code}</span></div></td>
-                                                <td>{cieScore != null ? cieScore + '/50' : '-'}</td>
+                                                 <td>{cieScore === -2.0 ? 'AB' : (cieScore != null ? cieScore + '/50' : '-')}</td>
                                                 <td>{cieAtt != null ? cieAtt + '%' : '-'}</td>
                                                 <td style={{ minWidth: '150px' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '4px' }}>
@@ -404,6 +413,7 @@ const StudentDashboard = () => {
                                                     const att = cieAtt != null ? parseFloat(cieAtt) : null;
                                                     const customRemark = mark[latestCie.remark];
                                                     if (score == null) return <td style={{ width: '250px', minWidth: '250px', padding: 0 }}><div style={{ fontSize: '0.72rem', color: '#94a3b8', padding: '8px 4px' }}>-</div></td>;
+                                                     if (score === -2.0) return <td style={{ width: '250px', minWidth: '250px', padding: '8px 4px', background: '#fef2f2' }}><div style={{ fontSize: '0.72rem', fontWeight: 600, color: '#dc2626' }}>{t('absent')}</div></td>;
                                                     const isLowMarks = score <= mThreshold;
                                                     const isLowAtt = att != null && att < aThreshold;
                                                     const isLow = isLowMarks || isLowAtt;
@@ -534,16 +544,18 @@ const StudentDashboard = () => {
         tableHeaders[0].push('Total');
 
         const tableRows = subjects.map(item => {
+            const fmtPdf = (val) => val === -2.0 ? 'AB' : (val != null ? (val === '-' ? '-' : val) : '-');
             const row = [item.code, item.subject];
             if (filter === 'All') {
-                row.push(item.cie1, item.cie1Att, item.cie2, item.cie2Att, item.cie3, item.cie3Att, item.cie4, item.cie4Att, item.cie5, item.cie5Att);
+                row.push(fmtPdf(item.cie1), item.cie1Att, fmtPdf(item.cie2), item.cie2Att, fmtPdf(item.cie3), item.cie3Att, fmtPdf(item.cie4), item.cie4Att, fmtPdf(item.cie5), item.cie5Att);
             } else {
-                let score = '-'; let att = '-';
-                if (filter === 'CIE-1') { score = item.cie1; att = item.cie1Att; }
-                else if (filter === 'CIE-2') { score = item.cie2; att = item.cie2Att; }
-                else if (filter === 'CIE-3') { score = item.cie3; att = item.cie3Att; }
-                else if (filter === 'CIE-4') { score = item.cie4; att = item.cie4Att; }
-                else if (filter === 'CIE-5') { score = item.cie5; att = item.cie5Att; }
+                let score = '-';
+                let att = '-';
+                if (filter === 'CIE-1 (Theory)') { score = fmtPdf(item.cie1); att = item.cie1Att; }
+                else if (filter === 'Skill Test 1 (Lab)') { score = fmtPdf(item.cie2); att = item.cie2Att; }
+                else if (filter === 'CIE-2 (Theory)') { score = fmtPdf(item.cie3); att = item.cie3Att; }
+                else if (filter === 'Skill Test 2 (Lab)') { score = fmtPdf(item.cie4); att = item.cie4Att; }
+                else if (filter === 'Activity') { score = fmtPdf(item.cie5); att = item.cie5Att; }
                 row.push(score, att);
             }
             row.push(item.total);
@@ -579,11 +591,11 @@ const StudentDashboard = () => {
             if (selectedCIE === 'All') {
                 if (mark.cie1Score != null || mark.cie2Score != null || mark.cie3Score != null || mark.cie4Score != null || mark.cie5Score != null) hasDataForSelectedCIE = true;
             } else {
-                const check = (selectedCIE === 'CIE-1' && mark.cie1Score != null) ||
-                    (selectedCIE === 'CIE-2' && mark.cie2Score != null) ||
-                    (selectedCIE === 'CIE-3' && mark.cie3Score != null) ||
-                    (selectedCIE === 'CIE-4' && mark.cie4Score != null) ||
-                    (selectedCIE === 'CIE-5' && mark.cie5Score != null);
+                const check = (selectedCIE === 'CIE-1 (Theory)' && mark.cie1Score != null) ||
+                    (selectedCIE === 'Skill Test 1 (Lab)' && mark.cie2Score != null) ||
+                    (selectedCIE === 'CIE-2 (Theory)' && mark.cie3Score != null) ||
+                    (selectedCIE === 'Skill Test 2 (Lab)' && mark.cie4Score != null) ||
+                    (selectedCIE === 'Activity' && mark.cie5Score != null);
                 if (check) hasDataForSelectedCIE = true;
             }
 
@@ -635,11 +647,11 @@ const StudentDashboard = () => {
                             <div className={styles.selectionGroup}><label className={styles.selectionLabel}>{t('selectInternals')}:</label>
                                 <select value={selectedCIE} onChange={(e) => setSelectedCIE(e.target.value)} className={styles.filterSelect}>
                                     <option value="All">{t('allInternals')}</option>
-                                    <option value="CIE-1">CIE-1</option>
-                                    <option value="CIE-2">CIE-2</option>
-                                    <option value="CIE-3">CIE-3 Skill Test 1</option>
-                                    <option value="CIE-4">CIE-4 Skill Test 2</option>
-                                    <option value="CIE-5">CIE-5 Activities</option>
+                                    <option value="CIE-1 (Theory)">CIE-1 (Theory)</option>
+                                    <option value="Skill Test 1 (Lab)">Skill Test 1 (Lab)</option>
+                                    <option value="CIE-2 (Theory)">CIE-2 (Theory)</option>
+                                    <option value="Skill Test 2 (Lab)">Skill Test 2 (Lab)</option>
+                                    <option value="Activity">Activity</option>
                                 </select>
                             </div>
                         </div>
@@ -665,11 +677,11 @@ const StudentDashboard = () => {
                                         <th>{t('subjects')}</th>
                                         {selectedCIE === 'All' ? (
                                             <>
-                                                <th>CIE-1</th><th>{t('attendance').substring(0, 3)}</th>
-                                                <th>CIE-2</th><th>{t('attendance').substring(0, 3)}</th>
-                                                <th>CIE-3</th><th>{t('attendance').substring(0, 3)}</th>
-                                                <th>CIE-4</th><th>{t('attendance').substring(0, 3)}</th>
-                                                <th>CIE-5</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>CIE-1 (T)</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>ST-1 (L)</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>CIE-2 (T)</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>ST-2 (L)</th><th>{t('attendance').substring(0, 3)}</th>
+                                                <th>Activity</th><th>{t('attendance').substring(0, 3)}</th>
                                             </>
                                         ) : (
                                             <><th>{t('marks')} ({selectedCIE})</th><th>{t('attendance')}</th></>
@@ -705,11 +717,11 @@ const StudentDashboard = () => {
                                         };
 
                                         const allCies = [
-                                            row.cie1Remark ? { label: 'CIE-1', text: row.cie1Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie1 !== '-' ? parseFloat(row.cie1) : null, row.cie1Att !== '-' ? parseFloat(row.cie1Att) : null, 'CIE-1'),
-                                            row.cie2Remark ? { label: 'CIE-2', text: row.cie2Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie2 !== '-' ? parseFloat(row.cie2) : null, row.cie2Att !== '-' ? parseFloat(row.cie2Att) : null, 'CIE-2'),
-                                            row.cie3Remark ? { label: 'CIE-3', text: row.cie3Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie3 !== '-' ? parseFloat(row.cie3) : null, row.cie3Att !== '-' ? parseFloat(row.cie3Att) : null, 'CIE-3'),
-                                            row.cie4Remark ? { label: 'CIE-4', text: row.cie4Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie4 !== '-' ? parseFloat(row.cie4) : null, row.cie4Att !== '-' ? parseFloat(row.cie4Att) : null, 'CIE-4'),
-                                            row.cie5Remark ? { label: 'CIE-5', text: row.cie5Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie5 !== '-' ? parseFloat(row.cie5) : null, row.cie5Att !== '-' ? parseFloat(row.cie5Att) : null, 'CIE-5')
+                                            row.cie1Remark ? { label: 'CIE-1 (Theory)', text: row.cie1Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie1 !== '-' ? parseFloat(row.cie1) : null, row.cie1Att !== '-' ? parseFloat(row.cie1Att) : null, 'CIE-1 (Theory)'),
+                                            row.cie2Remark ? { label: 'Skill Test 1 (Lab)', text: row.cie2Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie2 !== '-' ? parseFloat(row.cie2) : null, row.cie2Att !== '-' ? parseFloat(row.cie2Att) : null, 'Skill Test 1 (Lab)'),
+                                            row.cie3Remark ? { label: 'CIE-2 (Theory)', text: row.cie3Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie3 !== '-' ? parseFloat(row.cie3) : null, row.cie3Att !== '-' ? parseFloat(row.cie3Att) : null, 'CIE-2 (Theory)'),
+                                            row.cie4Remark ? { label: 'Skill Test 2 (Lab)', text: row.cie4Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie4 !== '-' ? parseFloat(row.cie4) : null, row.cie4Att !== '-' ? parseFloat(row.cie4Att) : null, 'Skill Test 2 (Lab)'),
+                                            row.cie5Remark ? { label: 'Activity', text: row.cie5Remark, severity: 1, excellent: false, lowMarks: false, lowAtt: false, custom: true } : getCieRemark(row.cie5 !== '-' ? parseFloat(row.cie5) : null, row.cie5Att !== '-' ? parseFloat(row.cie5Att) : null, 'Activity')
                                         ];
                                         const filled = allCies.filter(r => r !== null);
 
@@ -743,11 +755,11 @@ const StudentDashboard = () => {
                                             }
                                         } else if (selectedCIE !== 'All') {
                                             let target = null;
-                                            if (selectedCIE === 'CIE-1') target = allCies[0];
-                                            else if (selectedCIE === 'CIE-2') target = allCies[1];
-                                            else if (selectedCIE === 'CIE-3') target = allCies[2];
-                                            else if (selectedCIE === 'CIE-4') target = allCies[3];
-                                            else if (selectedCIE === 'CIE-5') target = allCies[4];
+                                            if (selectedCIE === 'CIE-1 (Theory)') target = allCies[0];
+                                            else if (selectedCIE === 'Skill Test 1 (Lab)') target = allCies[1];
+                                            else if (selectedCIE === 'CIE-2 (Theory)') target = allCies[2];
+                                            else if (selectedCIE === 'Skill Test 2 (Lab)') target = allCies[3];
+                                            else if (selectedCIE === 'Activity') target = allCies[4];
 
                                             if (target) {
                                                 finalRemark = target.text;
@@ -765,26 +777,48 @@ const StudentDashboard = () => {
                                                 <td><div className={styles.subjectCell}><span style={{ fontWeight: 600 }}>{row.subject}</span><span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{row.code}</span></div></td>
                                                 {selectedCIE === 'All' ? (
                                                     <>
-                                                        <td>{row.cie1 !== '-' ? row.cie1 + '/50' : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie1Att !== '-' ? row.cie1Att + '%' : '-'}</span></td>
-                                                        <td>{row.cie2 !== '-' ? row.cie2 + '/50' : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie2Att !== '-' ? row.cie2Att + '%' : '-'}</span></td>
-                                                        <td>{row.cie3 !== '-' ? row.cie3 + '/50' : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie3Att !== '-' ? row.cie3Att + '%' : '-'}</span></td>
-                                                        <td>{row.cie4 !== '-' ? row.cie4 + '/50' : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie4Att !== '-' ? row.cie4Att + '%' : '-'}</span></td>
-                                                        <td>{row.cie5 !== '-' ? row.cie5 + '/50' : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie5Att !== '-' ? row.cie5Att + '%' : '-'}</span></td>
+                                                        <td>{row.cie1 !== '-' ? (row.cie1 === -2.0 ? 'AB' : row.cie1 + '/50') : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie1Att !== '-' ? row.cie1Att + '%' : '-'}</span></td>
+                                                        <td>{row.cie2 !== '-' ? (row.cie2 === -2.0 ? 'AB' : row.cie2 + '/50') : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie2Att !== '-' ? row.cie2Att + '%' : '-'}</span></td>
+                                                        <td>{row.cie3 !== '-' ? (row.cie3 === -2.0 ? 'AB' : row.cie3 + '/50') : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie3Att !== '-' ? row.cie3Att + '%' : '-'}</span></td>
+                                                        <td>{row.cie4 !== '-' ? (row.cie4 === -2.0 ? 'AB' : row.cie4 + '/50') : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie4Att !== '-' ? row.cie4Att + '%' : '-'}</span></td>
+                                                        <td>{row.cie5 !== '-' ? (row.cie5 === -2.0 ? 'AB' : row.cie5 + '/50') : '-'}</td><td><span style={{ fontSize: '0.72rem' }}>{row.cie5Att !== '-' ? row.cie5Att + '%' : '-'}</span></td>
                                                     </>
                                                 ) : (
                                                     <>
-                                                        <td>{(() => { const score = selectedCIE === 'CIE-1' ? row.cie1 : selectedCIE === 'CIE-2' ? row.cie2 : selectedCIE === 'CIE-3' ? row.cie3 : selectedCIE === 'CIE-4' ? row.cie4 : row.cie5; return score !== '-' ? score + '/50' : '-'; })()}</td>
-                                                        <td>{selectedCIE === 'CIE-1' ? (row.cie1Att !== '-' ? row.cie1Att + '%' : '-') : selectedCIE === 'CIE-2' ? (row.cie2Att !== '-' ? row.cie2Att + '%' : '-') : selectedCIE === 'CIE-3' ? (row.cie3Att !== '-' ? row.cie3Att + '%' : '-') : selectedCIE === 'CIE-4' ? (row.cie4Att !== '-' ? row.cie4Att + '%' : '-') : (row.cie5Att !== '-' ? row.cie5Att + '%' : '-')}</td>
+                                                        <td>
+                                                            {(() => { 
+                                                                let rawScore = '-';
+                                                                if (selectedCIE === 'CIE-1 (Theory)') rawScore = row.cie1;
+                                                                else if (selectedCIE === 'Skill Test 1 (Lab)') rawScore = row.cie2;
+                                                                else if (selectedCIE === 'CIE-2 (Theory)') rawScore = row.cie3;
+                                                                else if (selectedCIE === 'Skill Test 2 (Lab)') rawScore = row.cie4;
+                                                                else if (selectedCIE === 'Activity') rawScore = row.cie5;
+
+                                                                if (rawScore === -2.0) return 'AB';
+                                                                return rawScore !== '-' ? rawScore + '/50' : '-';
+                                                            })()}
+                                                        </td>
+                                                        <td>
+                                                            {(() => {
+                                                                let att = '-';
+                                                                if (selectedCIE === 'CIE-1 (Theory)') att = row.cie1Att;
+                                                                else if (selectedCIE === 'Skill Test 1 (Lab)') att = row.cie2Att;
+                                                                else if (selectedCIE === 'CIE-2 (Theory)') att = row.cie3Att;
+                                                                else if (selectedCIE === 'Skill Test 2 (Lab)') att = row.cie4Att;
+                                                                else if (selectedCIE === 'Activity') att = row.cie5Att;
+                                                                return att !== '-' ? att + '%' : '-';
+                                                            })()}
+                                                        </td>
                                                     </>
                                                 )}
                                                 <td style={{ fontWeight: 700, color: 'var(--accent-indigo)' }}>{row.total} / 250</td>
-                                                <td>
-                                                    {finalRemark !== '-' ? (
-                                                        <div style={{ fontSize: '0.65rem', padding: '6px 4px', fontWeight: 600, color: finalColor, background: finalBg, borderRadius: '6px', whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4', minWidth: '150px' }}>{finalRemark}</div>
-                                                    ) : (
-                                                        <div style={{ fontSize: '0.75rem', color: '#94a3b8', padding: '6px 10px', textAlign: 'center' }}>-</div>
-                                                    )}
-                                                </td>
+                                         <td>
+                                             {finalRemark !== '-' ? (
+                                                 <div style={{ fontSize: '0.65rem', padding: '6px 4px', fontWeight: 600, color: finalColor, background: finalBg, borderRadius: '6px', whiteSpace: 'normal', wordWrap: 'break-word', lineHeight: '1.4', minWidth: '150px' }}>{finalRemark}</div>
+                                             ) : (
+                                                 <div style={{ fontSize: '0.75rem', color: '#94a3b8', padding: '6px 10px', textAlign: 'center' }}>-</div>
+                                             )}
+                                         </td>
                                             </tr>
                                         );
                                     })}
@@ -880,6 +914,108 @@ const StudentDashboard = () => {
                             ))}
                         </div>
                     }
+                </div>
+            </div>
+        );
+    };
+
+    const renderProfile = () => {
+        const initials = studentInfo.name ? studentInfo.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : 'ST';
+
+        const personalCards = [
+            { icon: <User size={24} />, label: t('name'), value: lang === 'KN' ? (studentInfo.nameKn || transliterateName(studentInfo.name, lang)) : studentInfo.name, bg: '#eff6ff', iconColor: '#2563eb' },
+            { icon: <Hash size={24} />, label: t('regNo'), value: studentInfo.rollNo, bg: '#f0fdf4', iconColor: '#059669' },
+            { icon: <Mail size={24} />, label: 'Email Address', value: studentInfo.email || '-', bg: '#fef3c7', iconColor: '#d97706' },
+        ];
+
+        const academicCards = [
+            { icon: <Building size={24} />, label: t('branch'), value: studentInfo.branch, bg: '#fce7f3', iconColor: '#be185d' },
+            { icon: <GraduationCap size={24} />, label: t('semester'), value: `Semester ${studentInfo.semester}`, bg: '#ecfdf5', iconColor: '#059669' },
+            { icon: <Layers size={24} />, label: 'Section', value: studentInfo.section || 'Not Assigned', bg: '#fff7ed', iconColor: '#ea580c' },
+        ];
+
+        const additionalCards = [
+            { icon: <Phone size={24} />, label: 'Parent Phone', value: studentInfo.parentPhone || '-', bg: '#f3e8ff', iconColor: '#7c3aed' },
+            { icon: <Shield size={24} />, label: t('assignedMentorLabel'), value: lang === 'KN' ? (studentInfo.mentorKn || transliterateName(studentInfo.mentor, lang)) : studentInfo.mentor, bg: '#e0f2fe', iconColor: '#0369a1' },
+        ];
+
+        return (
+            <div className={styles.detailsContainer}>
+                <div className={styles.card} style={{ padding: 0, overflow: 'hidden' }}>
+                    {/* Premium Profile Header */}
+                    <div className={styles.profileHeader}>
+                        <div className={styles.headerInfo}>
+                            <div className={styles.avatarLarge}>
+                                {initials}
+                            </div>
+                            <div>
+                                <h1 className={styles.headerName}>
+                                    {lang === 'KN' ? (studentInfo.nameKn || transliterateName(studentInfo.name, lang)) : studentInfo.name}
+                                </h1>
+                                <p className={styles.headerSubtext}>
+                                    <GraduationCap size={16} /> {studentInfo.branch} | {t('regNo')}: {studentInfo.rollNo}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{ padding: '2rem' }}>
+                        {/* Personal Information */}
+                        <div className={styles.sectionHeader}>
+                            <User size={18} /> Personal Information
+                            <div className={styles.sectionLine} />
+                        </div>
+                        <div className={styles.profileGrid}>
+                            {personalCards.map((card, i) => (
+                                <div key={i} className={styles.profileDetailCard}>
+                                    <div className={styles.profileDetailIcon} style={{ background: card.bg, color: card.iconColor }}>{card.icon}</div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div className={styles.profileDetailLabel}>{card.label}</div>
+                                        <div className={styles.profileDetailValue}>{card.value}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Academic Details */}
+                        <div className={styles.sectionHeader} style={{ marginTop: '2.5rem' }}>
+                            <GraduationCap size={18} /> Academic Details
+                            <div className={styles.sectionLine} />
+                        </div>
+                        <div className={styles.profileGrid}>
+                            {academicCards.map((card, i) => (
+                                <div key={i} className={styles.profileDetailCard}>
+                                    <div className={styles.profileDetailIcon} style={{ background: card.bg, color: card.iconColor }}>{card.icon}</div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div className={styles.profileDetailLabel}>{card.label}</div>
+                                        <div className={styles.profileDetailValue}>{card.value}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Additional Information */}
+                        <div className={styles.sectionHeader} style={{ marginTop: '2.5rem' }}>
+                            <Info size={18} /> Additional Information
+                            <div className={styles.sectionLine} />
+                        </div>
+                        <div className={styles.profileGrid}>
+                            {additionalCards.map((card, i) => (
+                                <div key={i} className={styles.profileDetailCard}>
+                                    <div className={styles.profileDetailIcon} style={{ background: card.bg, color: card.iconColor }}>{card.icon}</div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div className={styles.profileDetailLabel}>{card.label}</div>
+                                        <div className={styles.profileDetailValue}>{card.value}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Footer Help */}
+                        <div className={styles.footerInfo} style={{ marginTop: '3rem' }}>
+                            <Info size={16} /> {t('contactMentorGuidance')}
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -988,6 +1124,7 @@ const StudentDashboard = () => {
                 {activeSection === 'Faculty' && renderFaculty()}
                 {activeSection === 'Syllabus Topics' && renderSyllabusTopics()}
                 {activeSection === 'Notifications' && renderNotifications()}
+                {activeSection === 'Profile' && renderProfile()}
 
                 {toast.show && <div className={styles.toast}>{toast.message}</div>}
             </div>

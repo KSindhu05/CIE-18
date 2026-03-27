@@ -24,14 +24,6 @@ const AcademicSummary = ({ studentInfo, riskLevel, cieStatus = '0/5', loading = 
 
     const cards = [
         {
-            icon: <TrendingUp size={22} />,
-            iconBg: 'linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)',
-            iconColor: 'var(--secondary)',
-            label: t('aggregate'),
-            value: `${studentInfo.cgpa || '0'}%`,
-            subtext: t('currentSem'),
-        },
-        {
             icon: <BookOpen size={22} />,
             iconBg: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(251, 191, 36, 0.08) 100%)',
             iconColor: 'var(--warning)',

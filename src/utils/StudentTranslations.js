@@ -82,7 +82,8 @@ export const StudentTranslations = {
         currentSem: "Current Sem",
         ciesCompleted: "CIEs Completed",
         academicGuide: "Academic Guide",
-        notAssigned: "Not Assigned"
+        notAssigned: "Not Assigned",
+        profile: "Profile"
     },
     KN: {
         welcome: "ಸ್ವಾಗತ",
@@ -166,6 +167,7 @@ export const StudentTranslations = {
         currentSem: "ಪ್ರಸ್ತುತ ಸೆಮಿಸ್ಟರ್",
         ciesCompleted: "ಪೂರ್ಣಗೊಳಿಸಿದ ಸಿಐಇಗಳು",
         academicGuide: "ಶೈಕ್ಷಣಿಕ ಮಾರ್ಗದರ್ಶಕ",
-        notAssigned: "ನಿಯೋಜಿಸಲಾಗಿಲ್ಲ"
+        notAssigned: "ನಿಯೋಜಿಸಲಾಗಿಲ್ಲ",
+        profile: "ಪ್ರೊಫೈಲ್"
     }
 };

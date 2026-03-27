@@ -34,12 +34,16 @@ const AcademicInsights = ({ realMarks, loading = false, t }) => {
         if (realMarks.some(m => m[key] != null)) { latestCieKey = key; break; }
     }
 
-    // Get marks with latest CIE score
-    const marksWithScore = realMarks.filter(m => m[latestCieKey] != null).map(m => ({ ...m, latestScore: m[latestCieKey] }));
+    // Get marks with latest CIE score, treat -2.0 as 0 for sorting but remember it for display
+    const marksWithScore = realMarks.filter(m => m[latestCieKey] != null).map(m => ({ 
+        ...m, 
+        latestScore: m[latestCieKey],
+        sortScore: m[latestCieKey] === -2.0 ? 0 : m[latestCieKey]
+    }));
     if (marksWithScore.length === 0) return null;
 
-    const bestSubject = [...marksWithScore].sort((a, b) => b.latestScore - a.latestScore)[0];
-    const worstSubject = [...marksWithScore].sort((a, b) => a.latestScore - b.latestScore)[0];
+    const bestSubject = [...marksWithScore].sort((a, b) => b.sortScore - a.sortScore)[0];
+    const worstSubject = [...marksWithScore].sort((a, b) => a.sortScore - b.sortScore)[0];
 
     return (
         <motion.div
@@ -87,7 +91,7 @@ const AcademicInsights = ({ realMarks, loading = false, t }) => {
                             <div className={styles.insightIndicator} style={{ background: 'var(--success)' }}></div>
                             <div className={styles.insightContent}>
                                 <h4>{t('strongestSubject')}</h4>
-                                <p>{t('excellingIn')} <strong>{bestSubject?.name}</strong> {t('withScore')} {bestSubject?.latestScore}/50.</p>
+                                <p>{t('excellingIn')} <strong>{bestSubject?.name}</strong> {t('withScore')} {bestSubject?.latestScore === -2.0 ? 'AB' : (bestSubject?.latestScore + '/50')}.</p>
                             </div>
                             <ArrowUpRight size={18} color="var(--success)" />
                         </motion.div>
@@ -102,7 +106,7 @@ const AcademicInsights = ({ realMarks, loading = false, t }) => {
                                 <div className={styles.insightIndicator} style={{ background: 'var(--danger)' }}></div>
                                 <div className={styles.insightContent}>
                                     <h4>{t('focusArea')}</h4>
-                                    <p>{t('considerReviewing')} <strong>{worstSubject?.name}</strong> {t('toImprove')} ({worstSubject?.latestScore}/50).</p>
+                                    <p>{t('considerReviewing')} <strong>{worstSubject?.name}</strong> {t('toImprove')} ({worstSubject?.latestScore === -2.0 ? 'AB' : (worstSubject?.latestScore + '/50')}).</p>
                                 </div>
                                 <ArrowDownRight size={18} color="var(--danger)" />
                             </motion.div>
